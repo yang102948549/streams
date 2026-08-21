@@ -248,6 +248,10 @@ $('enterBtn').onclick=async()=>{
     A.name=name;localStorage.setItem('sm_student',JSON.stringify({name}));
     const snap=await roomRef().child('meta').get();
     if(!snap.exists()){$('entryErr').textContent='아직 선생님이 게임을 시작하지 않았어요. 잠시 후 다시 시도해 주세요.';$('enterBtn').disabled=false;return;}
+    const playersSnap=await roomRef().child('players').get();
+    const players=playersSnap.val()||{};
+    const dup=Object.entries(players).some(([pid,p])=>pid!==uid&&p&&p.name&&p.name.trim().toLowerCase()===name.toLowerCase());
+    if(dup){$('entryErr').textContent='이미 사용 중인 이름이에요. 다른 이름을 입력해 주세요.';$('enterBtn').disabled=false;return;}
     await enterRoom();
   }catch(e){console.error(e);$('entryErr').textContent='연결 실패: '+(e.message||e);}
   $('enterBtn').disabled=false;

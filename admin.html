@@ -316,12 +316,20 @@ $('enterBtn').onclick=async()=>{
   c.innerHTML=Object.entries(SCENARIOS).map(([k,sc])=>`<button class="card" data-k="${k}"><div class="mini"><svg viewBox="0 0 1200 620" id="mini${k}"></svg></div>
     <div class="side" style="background:${sc.panel}"><div class="badge">${k}</div><h3>${sc.title}</h3><p>${sc.desc}</p><span class="go">이 노선도로 방 열기 →</span></div></button>`).join('');
   Object.entries(SCENARIOS).forEach(([k,sc])=>renderMap($(`mini${k}`),sc,{active:null}));
-  c.querySelectorAll('.card').forEach(b=>b.onclick=()=>createRoom(b.dataset.k));
+  c.querySelectorAll('.card').forEach(b=>b.onclick=()=>createRoom(b.dataset.k,b));
 })();
-async function createRoom(key){
+async function createRoom(key,btnEl){
   const sc=SCENARIOS[key];
-  await roomRef().set({meta:{scenario:key,phase:sc.setupStars?'setup':'lobby',round:0,ownerUid:uid,ownerName:A.name,createdAt:Date.now()},private:{bag:makeBag()}});
-  await enterRoom();
+  if(btnEl)btnEl.style.opacity='.5';
+  try{
+    await roomRef().child('meta').set({scenario:key,phase:sc.setupStars?'setup':'lobby',round:0,ownerUid:uid,ownerName:A.name,createdAt:Date.now()});
+    await roomRef().child('private').set({bag:makeBag()});
+    await enterRoom();
+  }catch(e){
+    console.error(e);
+    if(btnEl)btnEl.style.opacity='1';
+    await modal({title:'방을 열지 못했습니다',text:'오류: '+(e.message||e)+'\n\nFirebase 콘솔에서 (1) Realtime Database 보안 규칙이 게시됐는지, (2) Authentication에서 익명 로그인이 켜져 있는지 확인해 주세요.',icon:'!',cancel:false});
+  }
 }
 function setupBoard(key){A.key=key;A.sc=SCENARIOS[key];$('panel').style.background=A.sc.panel;$('pbadge').style.background=A.sc.panel;$('pbadge').textContent=key;$('pnote').textContent=A.sc.desc;$('codeShow').textContent=A.code;buildStrip(A.sc);}
 function drawsArr(round){return Object.entries(A.draws[round]||{}).map(([k,v])=>({seq:+k,...v})).sort((a,b)=>a.seq-b.seq);}

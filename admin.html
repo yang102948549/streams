@@ -287,7 +287,7 @@ function tileHTML(d){
 }
 
 let db,auth,uid=null;
-const A={name:'',sc:null,key:null,meta:null,draws:{},players:{},results:{},subs:[],bag:[]};
+const A={name:'',sc:null,key:null,meta:null,draws:{},players:{},results:{},subs:[],bag:[],drawing:false,grading:false,seqNext:{}};
 function off(){A.subs.forEach(fn=>fn());A.subs=[];}
 function listen(ref,ev,cb){
   ref.on(ev,cb,err=>{
@@ -298,6 +298,9 @@ function listen(ref,ev,cb){
 }
 const roomRef=()=>db.ref('room');
 const show=id=>['entry','select','game'].forEach(s=>$(s).classList.toggle('hidden',s!==id));
+// 'room' 노드 자체를 remove()하면 규칙상 거부되므로(부모 경로에 .write 없음) 자식들을 개별 null로 지운다
+const clearRoom=()=>roomRef().update({meta:null,draws:null,results:null,private:null,players:null});
+function showErr(title,e){console.error(e);return modal({title,text:'오류: '+(e&&e.message||e)+'\n\nFirebase 보안 규칙이 최신(room 경로, auth != null) 버전으로 게시되어 있는지 확인해 주세요.',icon:'!',cancel:false});}
 
 (function init(){try{const s=JSON.parse(localStorage.getItem('sm_admin')||'{}');if(s.name)$('inName').value=s.name;}catch(e){}})();
 
@@ -315,8 +318,8 @@ $('enterBtn').onclick=async()=>{
       const keep=await modal({title:'진행 중인 게임이 있어요',text:'이어서 진행할까요?',icon:'M',okText:'이어하기'});
       if(keep){await enterRoom();}
       else{const fresh=await modal({title:'새로 만들기',text:'기존 게임 기록이 모두 삭제됩니다.',icon:'!',okText:'삭제하고 새로'});
-        if(fresh){await roomRef().remove();show('select');}else{$('enterBtn').disabled=false;return;}}
-    }else{if(snap.exists())await roomRef().remove();show('select');}
+        if(fresh){await clearRoom();show('select');}else{$('enterBtn').disabled=false;return;}}
+    }else{if(snap.exists())await clearRoom();show('select');}
   }catch(e){console.error(e);$('entryErr').textContent='연결 실패: '+(e.message||e);}
   $('enterBtn').disabled=false;
 };
@@ -351,12 +354,12 @@ function chipsHTML(round){const out=[];drawsArr(round).forEach(d=>{
 async function enterRoom(){
   off();show('game');$('pname').innerHTML=`${A.name}<span class="tag">관리자</span>`;
   listen(roomRef().child('meta'),'value',s=>{const m=s.val();if(!m)return;const first=!A.meta||A.meta.scenario!==m.scenario;A.meta=m;if(first)setupBoard(m.scenario);render();});
-  listen(roomRef().child('draws'),'value',s=>{A.draws=s.val()||{};render();});
+  listen(roomRef().child('draws'),'value',s=>{A.draws=s.val()||{};Object.keys(A.draws).forEach(r=>{A.seqNext[r]=Math.max(A.seqNext[r]||0,drawsArr(+r).length);});render();});
   listen(roomRef().child('players'),'value',s=>{A.players=s.val()||{};render();});
   listen(roomRef().child('results'),'value',s=>{A.results=s.val()||{};render();});
   listen(roomRef().child('private/bag'),'value',s=>{A.bag=s.val()||[];render();});
 }
-function playerProgress(p,round){const need=drawsArr(round).filter(placeable).map(d=>d.seq),placed=(p.placed&&p.placed[round])||{};return {done:need.filter(s=>placed[s]).length,need:need.length};}
+function playerProgress(p,round){const need=drawsArr(round).filter(placeable).map(d=>d.seq),placed=(p.placed&&p.placed[round])||{};return {done:need.filter(s=>placed[s]!==undefined&&placed[s]!==null).length,need:need.length};}
 function cellsToFill(){const act=activeIdxOf(A.sc,A.meta.round).length;return act-(A.key==='B'&&A.meta.round===1?2:0)-(A.key==='C'?2:0);}
 
 function render(){
@@ -381,9 +384,11 @@ function render(){
   $('progLbl').textContent=m.phase==='setup'?'★ 배치 완료':'현재 타일 배치 완료';
   $('progNum').textContent=`${done} / ${total}`;$('progBar').style.width=total?(done/total*100)+'%':'0%';
 
-  $('drawBtn').disabled=m.phase!=='play'||allDrawn||!A.bag.length;
-  $('aHint').textContent=m.phase!=='play'?'':allDrawn?'모든 타일을 뽑았습니다. 채점하세요.':(done<total?`${total-done}명이 아직 놓는 중`:'전원 배치 완료');
+  $('drawBtn').disabled=A.drawing||m.phase!=='play'||allDrawn||!A.bag.length;
+  $('aHint').textContent=m.phase!=='play'?'':allDrawn?(done<total?`모든 타일을 뽑았습니다. ${total-done}명 배치 완료 대기 중 (완료되면 자동 채점)`:'전원 배치 완료 · 채점 중…'):(done<total?`${total-done}명이 아직 놓는 중`:'전원 배치 완료');
   $('bagCnt').textContent=`· 주머니 ${A.bag.length}장`;$('aChips').innerHTML=chipsHTML(round);
+  // 자동 종료: 타일을 다 뽑았고 입장한 학생 전원이 배치를 마치면 자동 채점
+  if(m.phase==='play'&&allDrawn&&total>0&&done===total&&!A.grading)gradeRound();
 
   let h='';
   if(m.phase==='lobby'||m.phase==='setup')h+=`<button class="btn light" id="startBtn" ${players.length?'':'disabled'}>게임 시작</button>`;
@@ -391,10 +396,10 @@ function render(){
   if(m.phase==='between')h+=`<button class="btn light" id="nextBtn">${sc.rounds[round+1].label} 시작</button>`;
   if(m.phase==='done')h+=`<button class="btn light" id="closeBtn">방 닫기</button>`;
   $('ctl').innerHTML=h;
-  if($('startBtn'))$('startBtn').onclick=()=>roomRef().child('meta').update({phase:'play'});
+  if($('startBtn'))$('startBtn').onclick=()=>roomRef().child('meta').update({phase:'play'}).catch(e=>showErr('게임 시작 실패',e));
   if($('scoreBtn'))$('scoreBtn').onclick=gradeRound;
   if($('nextBtn'))$('nextBtn').onclick=nextRound;
-  if($('closeBtn'))$('closeBtn').onclick=async()=>{if(await modal({title:'방 닫기',text:'결과 기록이 삭제되고 학생 화면이 종료됩니다.',icon:'!',okText:'닫기'})){await roomRef().remove();leave();}};
+  if($('closeBtn'))$('closeBtn').onclick=async()=>{if(await modal({title:'방 닫기',text:'결과 기록이 삭제되고 학생 화면이 종료됩니다.',icon:'!',okText:'닫기'})){try{await clearRoom();leave();}catch(e){await showErr('방 닫기 실패',e);}}};
 
   const graded=m.phase==='between'||m.phase==='done';
   const rows=players.map(([id,p])=>{const res=A.results[id],pr=playerProgress(p,round);let st='';
@@ -406,18 +411,23 @@ function render(){
 }
 function drawExtra(bag){while(bag.length){const t=bag.pop();if(t==='REMOVE'||t==='CHOICE'){bag.splice(Math.floor(Math.random()*bag.length),0,t);continue;}return t;}return null;}
 async function adminDraw(){
-  if($('drawBtn').disabled)return;const bag=[...A.bag];if(!bag.length)return;
+  if(A.drawing||$('drawBtn').disabled)return;const bag=[...A.bag];if(!bag.length)return;
   const t=bag.pop();let d;
   if(t==='REMOVE'){const a=drawExtra(bag),b=drawExtra(bag);d={tile:'REMOVE',removed:[a,b].filter(x=>x!==null)};}
   else if(t==='CHOICE'){const a=drawExtra(bag),b=drawExtra(bag);d={tile:'CHOICE',options:[a,b].filter(x=>x!==null)};}
   else d={tile:t};
-  $('drawBtn').disabled=true;
-  const upd={};upd[`draws/${A.meta.round}/${drawsArr(A.meta.round).length}`]={...d,ts:Date.now()};upd['private/bag']=bag;
-  await roomRef().update(upd);
+  A.drawing=true;$('drawBtn').disabled=true;
+  const round=A.meta.round,seq=Math.max(drawsArr(round).length,(A.seqNext[round]||0));
+  A.seqNext[round]=seq+1; // 리스너가 늦어도 같은 seq를 재사용하지 않도록
+  const upd={};upd[`draws/${round}/${seq}`]={...d,ts:Date.now()};upd['private/bag']=bag;
+  try{await roomRef().update(upd);}
+  catch(e){A.seqNext[round]=seq;await showErr('타일 전송 실패',e);}
+  finally{A.drawing=false;render();}
 }
 $('drawBtn').onclick=adminDraw;
-document.addEventListener('keydown',e=>{if(e.code==='Space'&&!$('game').classList.contains('hidden')&&$('modal').classList.contains('hidden')){e.preventDefault();adminDraw();}});
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!$('game').classList.contains('hidden')&&$('modal').classList.contains('hidden')){e.preventDefault();adminDraw();}});
 async function gradeRound(){
+  if(A.grading)return;A.grading=true;
   const m=A.meta,sc=A.sc,round=m.round,lines=sc.rounds[round].lines.map(id=>sc.lines.find(l=>l.id===id)),upd={};
   Object.entries(A.players).forEach(([id,p])=>{
     const values=[];Object.entries(p.values||{}).forEach(([k,v])=>values[+k]=v);
@@ -426,18 +436,22 @@ async function gradeRound(){
     upd[`results/${id}`]={name:p.name,rounds,total:Object.values(rounds).reduce((a,r)=>a+r.score,0)};
   });
   upd['meta/phase']=round<sc.rounds.length-1?'between':'done';
-  await roomRef().update(upd);
+  try{await roomRef().update(upd);}catch(e){await showErr('채점 실패',e);}
+  finally{A.grading=false;}
 }
-async function nextRound(){const r=A.meta.round+1,upd={'meta/round':r,'meta/phase':'play'};if(A.sc.rounds[r].newBag)upd['private/bag']=makeBag();await roomRef().update(upd);}
-function leave(){off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};show('entry');}
+async function nextRound(){
+  const r=A.meta.round+1,upd={'meta/round':r,'meta/phase':'play'};if(A.sc.rounds[r].newBag)upd['private/bag']=makeBag();
+  try{await roomRef().update(upd);}catch(e){await showErr('다음 라운드 시작 실패',e);}
+}
+function leave(){off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};A.bag=[];A.seqNext={};A.drawing=false;A.grading=false;show('entry');}
 $('backBtn').onclick=async()=>{if(await modal({title:'나가기',text:'게임은 그대로 유지됩니다. 다시 로그인하면 이어서 진행할 수 있어요.',icon:'M',okText:'나가기'}))leave();};
 $('resetBtn').onclick=async()=>{
   if(!(await modal({title:'게임 초기화',text:'현재 진행 상황(학생 배치, 뽑은 타일, 점수)이 모두 삭제되고 처음부터 다시 시작합니다. 계속할까요?',icon:'!',okText:'초기화'})))return;
   try{
-    await roomRef().remove();
-    off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};
+    await clearRoom();
+    off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};A.bag=[];A.seqNext={};A.drawing=false;A.grading=false;
     show('select');
-  }catch(e){console.error(e);await modal({title:'초기화 실패',text:'오류: '+(e.message||e),icon:'!',cancel:false});}
+  }catch(e){await showErr('초기화 실패',e);}
 };
 </script>
 </body>

@@ -182,7 +182,13 @@ let db,auth,uid=null;
 const A={name:'',code:'',sc:null,key:null,meta:null,draws:{},me:null,results:{},subs:[]};
 const ST={choicePick:null};
 function off(){A.subs.forEach(fn=>fn());A.subs=[];}
-function listen(ref,ev,cb){ref.on(ev,cb);A.subs.push(()=>ref.off(ev,cb));}
+function listen(ref,ev,cb){
+  ref.on(ev,cb,err=>{
+    console.error('LISTEN DENIED:',ref.toString(),err);
+    modal('실시간 연결 오류',`데이터 읽기가 거부됐습니다. (${err.message||err})`);
+  });
+  A.subs.push(()=>ref.off(ev,cb));
+}
 const roomRef=()=>db.ref('rooms/'+A.code);
 const show=id=>{['entry','game'].forEach(s=>$(s).classList.toggle('hidden',s!==id));$('rotate').classList.toggle('on',id==='game');};
 

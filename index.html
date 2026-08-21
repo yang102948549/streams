@@ -95,6 +95,10 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 #rotate h2{font-size:20px;font-weight:900;margin-bottom:6px}
 #rotate p{font-size:13px;opacity:.8}
 @media (orientation:portrait){#rotate.on{display:grid}}
+.runpath{stroke-dasharray:1;stroke-dashoffset:1;animation:drawrun .9s ease-out forwards}
+@keyframes drawrun{to{stroke-dashoffset:0}}
+.runbadge{opacity:0;animation:badgein .4s .7s cubic-bezier(.2,1.4,.4,1) forwards;transform-box:fill-box;transform-origin:center}
+@keyframes badgein{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
 </head>
@@ -147,6 +151,7 @@ const firebaseConfig = {
 
 const SCORE=[0,0,3,8,15,25,35,50,65,80,100,120,140,165,190,220,250,280,310,350,400];
 const COLORS={blue:'#3FA9E0',orange:'#F5921E',lime:'#8CC63F',green:'#2E9E63',purple:'#5B3F9E'};
+const RUN_PAL=['#E5396B','#FF8C1A','#12B5A5','#7B3FE4','#0FA36B','#E0B400','#2F7BFF','#E85D04','#C2458F','#0097B2','#6A994E','#D62828'];
 const S=(ox,oy,arr)=>arr.map(([x,y,f])=>({x:(x-ox)*2,y:(y-oy)*2,shared:f==='P'}));
 const SCENARIOS={
   A:{panel:'#F28C1B',stations:S(45,205,[[90,240],[145,240],[200,275],[200,330],[165,385],[130,455],[185,455],[235,495],[290,490],[320,440],[350,390],[350,335],[350,280],[405,270],[460,315],[500,355],[550,310],[605,265],[605,375],[605,430]]),
@@ -174,13 +179,32 @@ function renderMap(svg,sc,state){
     out+=`<path d="${d}" fill="none" stroke="${COLORS[line.id]}" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" opacity="${on?1:.28}"/>`;
     if(line.loop)for(let k=0;k<pts.length;k++){const a=pts[k],b=pts[(k+1)%pts.length],mx=(a.x+b.x)/2,my=(a.y+b.y)/2,ang=Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI;
       out+=`<g transform="translate(${mx} ${my}) rotate(${ang})" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"><path d="M-9 -7 L-2 0 L-9 7 M2 -7 L9 0 L2 7"/></g>`;}}
+  // 점수 구간 오버레이 (라운드 종료 후 트랙 위에 색 구간 + 점수 배지)
+  if(state.runs){
+    const scored=state.runs.filter(r=>r.color);
+    if(scored.length)out+=`<rect width="1200" height="620" fill="#FBF1E2" opacity=".45"/>`;
+    scored.forEach((r,n)=>{
+      const pts=r.idx.map(i=>st[i]);
+      const d=pts.map((p,k)=>(k?'L':'M')+p.x+' '+p.y).join(' ');
+      out+=`<path d="${d}" fill="none" stroke="#fff" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>`;
+      out+=`<path class="runpath" pathLength="1" style="animation-delay:${n*.12}s" d="${d}" fill="none" stroke="${r.color}" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const m=(pts.length-1)/2,a=pts[Math.floor(m)],b=pts[Math.ceil(m)];
+      const bx=(a.x+b.x)/2,by=(a.y+b.y)/2-46,label=`${r.idx.length}칸 +${r.score}`;
+      const bw=label.length*11+26;
+      out+=`<g class="runbadge" style="animation-delay:${.7+n*.12}s">
+        <rect x="${bx-bw/2}" y="${by-17}" width="${bw}" height="34" rx="17" fill="#fff" stroke="${r.color}" stroke-width="4"/>
+        <text x="${bx}" y="${by+1}" text-anchor="middle" dominant-baseline="central" font-family="Barlow Condensed,Pretendard" font-weight="800" font-size="20" fill="${r.color}">${label}</text></g>`;
+    });
+  }
   st.forEach((p,i)=>{
     const v=state.values[i]??null,lines=sc.lines.filter(l=>l.idx.includes(i)),on=!act||act.has(i);
     const col=p.shared?COLORS.purple:COLORS[lines[0].id],clickable=state.clickable&&state.clickable(i),run=runOf[i];
-    let fill='#fff',txt=col;if(run){fill=run;txt='#fff';}
+    let fill='#fff',txt=col;
+    if(run){fill=run;txt='#fff';}
+    else if(state.runs&&state.runs.some(r=>r.color)&&v!==null){fill='#EDE7DB';txt='#9a9489';}
     out+=`<g class="st${clickable?' click':''}" data-i="${i}" opacity="${on||v!==null?1:.35}">`;
     if(clickable)out+=`<circle cx="${p.x}" cy="${p.y}" r="46" fill="${col}" opacity=".2"><animate attributeName="r" values="42;50;42" dur="1.4s" repeatCount="indefinite"/></circle>`;
-    out+=`<circle cx="${p.x}" cy="${p.y}" r="34" fill="${fill}" stroke="${col}" stroke-width="8"/>`;
+    out+=`<circle cx="${p.x}" cy="${p.y}" r="34" fill="${fill}" stroke="${run||col}" stroke-width="8"/>`;
     if(v!==null)out+=`<text x="${p.x}" y="${p.y+1}" text-anchor="middle" dominant-baseline="central" font-family="Barlow Condensed,Pretendard" font-weight="800" font-size="${v==='★'?44:40}" fill="${txt}">${sym(v)}</text>`;
     if(clickable)out+=`<circle cx="${p.x}" cy="${p.y}" r="56" fill="transparent"/>`; // 터치 영역 확대
     out+=`</g>`;
@@ -246,10 +270,18 @@ function render(){
   const placed=(A.me&&A.me.placed&&A.me.placed[round])||{};
   const ds=drawsArr(round),pending=ds.filter(d=>placeable(d)&&!placed[d.seq]),head=pending[0]||null,last=ds.at(-1);
   const myRes=A.results[uid]||null,graded=m.phase==='between'||m.phase==='done';
-  const runsByIdx={};let lineResults=null;
-  if(myRes&&graded){lineResults=Object.values(myRes.rounds||{}).flatMap(r=>r.lines);lineResults.forEach(r=>r.runs.forEach(run=>{if(run.length>=2)run.forEach(i=>runsByIdx[i]=COLORS[r.id]);}));}
+  let lineResults=null,runs=null;
+  if(myRes&&graded){
+    lineResults=Object.values(myRes.rounds||{}).flatMap(r=>r.lines);
+    runs=[];let k=0;
+    lineResults.forEach(r=>r.runs.forEach(run=>{
+      if(run.length>=2)runs.push({id:r.id,idx:run,score:SCORE[run.length],color:RUN_PAL[k++%RUN_PAL.length]});
+      else runs.push({id:r.id,idx:run,score:0,color:null});
+    }));
+  }
+  const runsByIdx={};if(runs)runs.forEach(r=>{if(r.color)r.idx.forEach(i=>runsByIdx[i]=r.color);});
   const canPlace=i=>values[i]==null&&act.has(i)&&((m.phase==='setup'&&starsLeft()>0)||(m.phase==='play'&&head&&(head.tile!=='CHOICE'||ST.choicePick!==null)));
-  renderMap($('map'),sc,{values,active:act,runsByIdx,clickable:canPlace});
+  renderMap($('map'),sc,{values,active:act,runsByIdx,runs,clickable:canPlace});
   $('map').querySelectorAll('.st.click').forEach(el=>el.addEventListener('click',()=>place(+el.dataset.i,head)));
 
   const left=[...act].filter(i=>values[i]==null).length,dot=$('sdot'),txt=$('stext');
@@ -274,8 +306,8 @@ function render(){
   if(myRes&&graded){
     $('chipsbox').classList.add('hidden');$('runsbox').classList.remove('hidden');
     const values=myValues();
-    const rows=(lineResults||[]).flatMap(lr=>lr.runs.filter(run=>run.length>=2).map(run=>
-      `<div class="runrow"><span class="sw" style="background:${COLORS[lr.id]}"></span><span class="seq">${run.map(i=>sym(values[i])).join(' → ')}</span><span class="pt">+${SCORE[run.length]}</span></div>`));
+    const rows=(runs||[]).filter(r=>r.color).map(r=>
+      `<div class="runrow"><span class="sw" style="background:${r.color}"></span><span class="seq">${r.idx.map(i=>sym(values[i])).join(' → ')}</span><span class="pt" style="color:${r.color}">+${r.score}</span></div>`);
     $('runlist').innerHTML=rows.length?rows.join(''):'<div class="runempty">오름차순 구간(2칸 이상)이 없어요</div>';
   }else{
     $('chipsbox').classList.remove('hidden');$('runsbox').classList.add('hidden');

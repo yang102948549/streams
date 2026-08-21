@@ -67,8 +67,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
 .board .mapwrap svg{width:100%;height:100%;display:block}
 .status{position:absolute;top:18px;left:22px;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);padding:10px 18px;border-radius:999px;font-weight:700;font-size:18px;box-shadow:0 4px 14px rgba(0,0,0,.08);display:flex;align-items:center;gap:10px}
 .status .dot{width:12px;height:12px;border-radius:50%;background:var(--blue)}
-.back{position:absolute;top:18px;right:22px;background:rgba(255,255,255,.92);padding:10px 16px;border-radius:999px;font-weight:700;font-size:15px;color:var(--muted)}
-.back:hover{color:var(--ink)}
+.back{position:absolute;top:18px;right:22px;display:flex;gap:8px}
+.back button{background:rgba(255,255,255,.92);padding:10px 16px;border-radius:999px;font-weight:700;font-size:15px;color:var(--muted)}
+.back button:hover{color:var(--ink)}
+.back .resetBtn{color:#c0392b;background:#fff}
+.back .resetBtn:hover{color:#a8321f}
 .codebar{position:absolute;bottom:18px;right:22px;background:var(--ink);color:#fff;padding:8px 18px;border-radius:14px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 16px rgba(0,0,0,.2)}
 .codebar small{font-size:12px;opacity:.7;font-weight:700}.codebar b{font:800 34px var(--num);letter-spacing:6px}
 .bigdraw{position:absolute;top:18px;left:50%;transform:translateX(-50%)}
@@ -163,7 +166,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
       <svg id="map" viewBox="0 0 1200 620" xmlns="http://www.w3.org/2000/svg"></svg>
       <div class="status"><span class="dot" id="sdot"></span><span id="stext">-</span></div>
       <div class="bigdraw hidden" id="bigdraw"></div>
-      <button class="back" id="backBtn">← 나가기</button>
+      <div class="back"><button id="resetBtn" class="resetBtn">⟲ 초기화</button><button id="backBtn">← 나가기</button></div>
       <div class="codebar"><small>방 코드</small><b id="codeShow">0000</b></div>
     </div>
     <div class="strip"><div class="train"></div><div class="cells" id="strip"></div></div>
@@ -427,6 +430,14 @@ async function gradeRound(){
 async function nextRound(){const r=A.meta.round+1,upd={'meta/round':r,'meta/phase':'play'};if(A.sc.rounds[r].newBag)upd['private/bag']=makeBag();await roomRef().update(upd);}
 function leave(){off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};show('entry');}
 $('backBtn').onclick=async()=>{if(await modal({title:'나가기',text:'방은 그대로 유지됩니다. 같은 코드로 다시 들어오면 이어서 진행할 수 있어요.',icon:'M',okText:'나가기'}))leave();};
+$('resetBtn').onclick=async()=>{
+  if(!(await modal({title:'게임 초기화',text:'현재 진행 상황(학생 배치, 뽑은 타일, 점수)이 모두 삭제되고 처음부터 다시 시작합니다. 계속할까요?',icon:'!',okText:'초기화'})))return;
+  try{
+    await roomRef().remove();
+    off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};
+    show('select');
+  }catch(e){console.error(e);await modal({title:'초기화 실패',text:'오류: '+(e.message||e),icon:'!',cancel:false});}
+};
 </script>
 </body>
 </html>

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>스트림스 메트로 · 관리자</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+:root{--cream:#FBF1E2;--ink:#2B2A33;--muted:#8A8391;--blue:#3FA9E0;--orange:#F5921E;--lime:#8CC63F;--green:#2E9E63;--purple:#5B3F9E;--num:'Barlow Condensed','Pretendard',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Pretendard',sans-serif;background:#EFE4D2;color:var(--ink);background-image:radial-gradient(circle at 10% 0%,#fff7ea 0,transparent 45%),radial-gradient(circle at 90% 100%,#f7dcc0 0,transparent 45%)}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.hidden{display:none!important}
+.logo{display:flex;align-items:center;gap:18px;margin-bottom:8px}
+.logo .pill{background:#fff;border:4px solid var(--ink);border-radius:999px;padding:6px 34px;font-weight:900;font-size:42px;letter-spacing:-1px}
+.logo .pill small{display:block;font-size:16px;font-weight:700;letter-spacing:8px;line-height:1;margin-top:-2px}
+.logo .rail{flex:1;height:10px;background:var(--ink);border-radius:5px;position:relative}
+.logo .rail::before,.logo .rail::after{content:"";position:absolute;top:-3px;width:16px;height:16px;border-radius:50%;background:#fff;border:4px solid var(--ink)}
+.logo .rail::before{left:18%}.logo .rail::after{left:62%}
+.sub{color:var(--muted);font-size:18px;margin:6px 0 34px;font-weight:500}
+
+#entry{min-height:100vh;padding:48px 64px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#entry .logo{width:min(900px,100%)}
+.ticket{width:min(560px,100%);background:#fff;border-radius:28px;box-shadow:0 16px 40px rgba(80,50,20,.15);overflow:hidden;display:grid;grid-template-columns:1fr 14px 180px}
+.ticket .main{padding:34px 34px 30px;display:flex;flex-direction:column;gap:16px}
+.ticket .perf{background:repeating-linear-gradient(180deg,#d8d0c4 0 10px,transparent 10px 20px);width:4px;margin:16px auto}
+.ticket .stub{background:var(--ink);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px}
+.ticket .stub .badge{width:64px;height:64px;border-radius:50%;background:#fff;color:var(--ink);display:grid;place-items:center;font:800 34px var(--num)}
+.ticket .stub .lbl{font-weight:800;font-size:15px;letter-spacing:1px}
+.field{background:var(--cream);border-radius:14px;padding:10px 14px}
+.field label{font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:2px}
+.field input{width:100%;border:0;background:transparent;font:700 24px 'Pretendard';color:var(--ink)}
+.field input.code{font:800 34px var(--num);letter-spacing:10px}
+.btn{width:100%;padding:14px;border-radius:14px;font-weight:800;font-size:20px;background:var(--ink);color:#fff;transition:transform .1s,opacity .15s}
+.btn:active{transform:scale(.98)}.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--ink);border:2px solid #d8d0c4;font-size:15px;padding:10px}
+.btn.light{background:#fff;color:var(--ink)}
+.err{font-size:13px;color:#c0392b;font-weight:600;min-height:16px}
+
+#modal{position:fixed;inset:0;background:rgba(43,42,51,.45);backdrop-filter:blur(4px);display:grid;place-items:center;z-index:50}
+.mbox{width:min(420px,92vw);background:#fff;border-radius:24px;padding:28px;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:pop .3s cubic-bezier(.2,1.3,.4,1)}
+.mbox h3{font-size:22px;font-weight:900;margin-bottom:6px;display:flex;align-items:center;gap:10px}
+.mbox h3 .ic{width:34px;height:34px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font:800 18px var(--num)}
+.mbox p{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+.mbox .row{display:flex;gap:8px}.mbox .row .btn{font-size:16px;padding:12px}
+
+#select{min-height:100vh;padding:48px 64px;display:flex;flex-direction:column}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:28px;flex:1}
+.card{background:#fff;border-radius:28px;overflow:hidden;display:grid;grid-template-columns:1fr 250px;box-shadow:0 10px 30px rgba(80,50,20,.12);transition:transform .18s,box-shadow .18s;text-align:left}
+.card:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(80,50,20,.18)}
+.card .mini{background:var(--cream);padding:14px}.card .mini svg{width:100%;height:100%;display:block}
+.card .side{padding:26px 24px;color:#fff;display:flex;flex-direction:column;gap:10px}
+.card .side .badge{width:44px;height:44px;border-radius:50%;background:#fff;color:var(--ink);font:800 26px var(--num);display:grid;place-items:center}
+.card .side h3{font-size:26px;font-weight:800;letter-spacing:-.5px}
+.card .side p{font-size:15px;line-height:1.5;opacity:.92;flex:1}
+.card .side .go{align-self:flex-start;background:#fff;color:var(--ink);border-radius:999px;padding:10px 22px;font-weight:800;font-size:16px}
+
+#game{height:100vh;display:grid;grid-template-columns:1fr 430px;gap:24px;padding:24px 28px}
+.board{background:#fff;border-radius:28px;box-shadow:0 10px 30px rgba(80,50,20,.12);display:flex;flex-direction:column;overflow:hidden;position:relative}
+.board .mapwrap{flex:1;background:var(--cream);position:relative;min-height:0}
+.board .mapwrap svg{width:100%;height:100%;display:block}
+.status{position:absolute;top:18px;left:22px;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);padding:10px 18px;border-radius:999px;font-weight:700;font-size:18px;box-shadow:0 4px 14px rgba(0,0,0,.08);display:flex;align-items:center;gap:10px}
+.status .dot{width:12px;height:12px;border-radius:50%;background:var(--blue)}
+.back{position:absolute;top:18px;right:22px;background:rgba(255,255,255,.92);padding:10px 16px;border-radius:999px;font-weight:700;font-size:15px;color:var(--muted)}
+.back:hover{color:var(--ink)}
+.codebar{position:absolute;bottom:18px;right:22px;background:var(--ink);color:#fff;padding:8px 18px;border-radius:14px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 16px rgba(0,0,0,.2)}
+.codebar small{font-size:12px;opacity:.7;font-weight:700}.codebar b{font:800 34px var(--num);letter-spacing:6px}
+.bigdraw{position:absolute;top:18px;left:50%;transform:translateX(-50%)}
+.bigdraw .bigtile{width:150px;height:150px;font-size:80px}
+.strip{display:flex;align-items:stretch;height:96px;background:#fff;border-top:6px solid var(--ink)}
+.strip .train{width:96px;background:#B11E1F;position:relative;border-radius:0 48px 48px 0;margin:8px 4px 8px 0}
+.strip .train::before{content:"";position:absolute;inset:14px 22px 14px 14px;background:#2e6fd6;border-radius:0 30px 30px 0;opacity:.9}
+.strip .train::after{content:"";position:absolute;left:10px;bottom:-4px;right:30px;height:8px;background:var(--ink);border-radius:4px}
+.strip .cells{flex:1;display:grid}
+.strip .cell{display:flex;flex-direction:column;border-left:2px solid #d8d0c4}
+.strip .cell .n{flex:1;display:grid;place-items:center;font:600 20px var(--num);color:#6b6574}
+.strip .cell .v{flex:1.2;display:grid;place-items:center;font:800 24px var(--num);color:#fff;background:var(--ink)}
+.strip .cell:nth-child(odd) .n{background:#e9e2d6}
+
+.panel{border-radius:28px;padding:22px;color:#fff;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 30px rgba(80,50,20,.12);overflow:auto;position:relative}
+.panel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:10px;background:repeating-linear-gradient(180deg,rgba(0,0,0,.18) 0 14px,transparent 14px 28px)}
+.panel .head{display:flex;align-items:center;gap:12px;margin-left:6px}
+.panel .head .rail{flex:1;height:6px;background:#fff;border-radius:3px}
+.panel .head .pill{background:#fff;color:var(--ink);border:4px solid var(--ink);border-radius:999px;padding:4px 22px 4px 12px;display:flex;align-items:center;gap:10px}
+.panel .head .badge{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#fff;font:800 16px var(--num)}
+.panel .head .t{font-weight:900;font-size:22px;line-height:1}.panel .head .t small{display:block;font-size:10px;letter-spacing:5px;font-weight:700}
+.box{background:#fff;color:var(--ink);border-radius:14px;padding:12px 14px}
+.box label{font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px}
+.box .nm{font-weight:800;font-size:22px}
+.box .nm .tag{font-size:11px;background:var(--ink);color:#fff;border-radius:6px;padding:2px 7px;margin-left:8px;vertical-align:middle}
+.legend{background:rgba(0,0,0,.15);border-radius:14px;padding:10px 12px;display:flex;flex-wrap:wrap;gap:6px}
+.legend .tile{font:700 13px var(--num);background:#fff3c4;color:var(--ink);border-radius:6px;padding:3px 7px;border-bottom:3px solid #d9b15c}
+.note{font-size:13px;line-height:1.45;opacity:.95;padding:0 4px}
+.drawzone{background:#fff;color:var(--ink);border-radius:18px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.bigtile{width:104px;height:104px;border-radius:20px;background:linear-gradient(160deg,#fff6d5,#f3d98f);border-bottom:6px solid #c99a3a;display:grid;place-items:center;font:800 52px var(--num);color:var(--ink);box-shadow:0 8px 18px rgba(120,80,10,.2);text-align:center}
+.bigtile.pop{animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
+@keyframes pop{from{transform:scale(.6) rotate(-8deg);opacity:0}to{transform:none;opacity:1}}
+.bigtile.empty{background:#f3eee4;border-bottom-color:#d8d0c4;color:#c2b9ad;font-size:36px}
+.bigtile.special{font-size:22px;font-family:'Pretendard';font-weight:800;background:linear-gradient(160deg,#f5f0ff,#d8cdf5);border-bottom-color:#8b75c9}
+.bigtile.special span{font:700 18px var(--num);opacity:.7}
+.bigdraw .bigtile.special{font-size:30px}.bigdraw .bigtile.special span{font-size:28px}
+.drawhint{font-size:13px;color:var(--muted);text-align:center;min-height:18px}
+.history{background:rgba(0,0,0,.15);border-radius:14px;padding:10px 12px}
+.history label{font-size:12px;font-weight:700;opacity:.85;display:block;margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;min-height:24px}
+.chip{font:700 14px var(--num);background:#fff;color:var(--ink);border-radius:6px;min-width:28px;padding:2px 6px;text-align:center}
+.chip.x{background:#c9c3d3;text-decoration:line-through;color:#5a5466}.chip.s{background:#d8cdf5}
+.prog{background:#fff;color:var(--ink);border-radius:14px;padding:12px 14px}
+.prog .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.prog .top b{font:800 26px var(--num)}
+.prog .bar{height:10px;background:#eee7da;border-radius:5px;overflow:hidden}
+.prog .bar i{display:block;height:100%;background:var(--green);width:0;transition:width .3s}
+.plist{background:#fff;color:var(--ink);border-radius:14px;padding:6px 0;max-height:360px;overflow:auto}
+.plist .row{display:grid;grid-template-columns:36px 1fr auto auto;gap:8px;align-items:center;padding:7px 14px;border-top:1px solid #f0eae0;font-size:15px}
+.plist .row:first-child{border:0}
+.plist .rank{font:800 18px var(--num);color:var(--muted);text-align:center}.plist .rank.top{color:var(--orange)}
+.plist .name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plist .st{font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;background:#eee7da;color:#6b6574}
+.plist .st.ok{background:#e3f5ea;color:var(--green)}
+.plist .sc{font:800 22px var(--num);min-width:44px;text-align:right}
+.plist .empty{padding:20px;text-align:center;color:var(--muted);font-size:14px}
+.ctl{display:flex;flex-direction:column;gap:8px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<section id="entry">
+  <div class="logo"><div class="pill">스트림스<small>메트로</small></div><div class="rail"></div></div>
+  <p class="sub" style="margin-bottom:24px">관리자용 · 방을 열고 타일을 뽑습니다.</p>
+  <div class="ticket">
+    <div class="main">
+      <div class="field"><label>선생님 이름</label><input id="inName" placeholder="이름" maxlength="12" autocomplete="off"></div>
+      <div class="field"><label>방 코드 (학생에게 알려줄 번호)</label><input id="inCode" class="code" maxlength="4" inputmode="numeric" autocomplete="off"></div>
+      <div class="err" id="entryErr"></div>
+      <button class="btn" id="enterBtn">방 열기</button>
+    </div>
+    <div class="perf"></div>
+    <div class="stub"><div class="badge">M</div><div class="lbl">관리자</div></div>
+  </div>
+</section>
+
+<div id="modal" class="hidden"><div class="mbox">
+  <h3><span class="ic" id="mIc">!</span><span id="mTitle"></span></h3><p id="mText"></p>
+  <div class="row"><button class="btn ghost" id="mCancel">취소</button><button class="btn" id="mOk">확인</button></div>
+</div></div>
+
+<section id="select" class="hidden">
+  <div class="logo"><div class="pill">스트림스<small>메트로</small></div><div class="rail"></div></div>
+  <p class="sub">노선도를 고르면 방이 열리고 학생들이 입장할 수 있습니다.</p>
+  <div class="cards" id="cards"></div>
+</section>
+
+<section id="game" class="hidden">
+  <div class="board">
+    <div class="mapwrap">
+      <svg id="map" viewBox="0 0 1200 620" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="status"><span class="dot" id="sdot"></span><span id="stext">-</span></div>
+      <div class="bigdraw hidden" id="bigdraw"></div>
+      <button class="back" id="backBtn">← 나가기</button>
+      <div class="codebar"><small>방 코드</small><b id="codeShow">0000</b></div>
+    </div>
+    <div class="strip"><div class="train"></div><div class="cells" id="strip"></div></div>
+  </div>
+  <aside class="panel" id="panel">
+    <div class="head"><div class="rail"></div><div class="pill"><span class="badge" id="pbadge">A</span><div class="t">스트림스<small>메트로</small></div></div><div class="rail"></div></div>
+    <div class="box"><label>관리자</label><div class="nm" id="pname"></div></div>
+    <div class="legend"><span class="tile">1~10</span><span class="tile">11~19 ×2</span><span class="tile">20~30</span><span class="tile">★</span><span class="tile">제거</span><span class="tile">선택</span></div>
+    <p class="note" id="pnote"></p>
+    <div class="drawzone">
+      <div id="aTileView"><div class="bigtile empty">?</div></div>
+      <button class="btn" id="drawBtn">타일 뽑기 <span style="opacity:.6;font-size:13px">(Space)</span></button>
+      <div class="drawhint" id="aHint"></div>
+    </div>
+    <div class="prog"><div class="top"><span style="font-weight:700;font-size:13px;color:var(--muted)" id="progLbl">배치 완료</span><b id="progNum">0 / 0</b></div><div class="bar"><i id="progBar"></i></div></div>
+    <div class="ctl" id="ctl"></div>
+    <div class="history"><label>뽑힌 타일 <span id="bagCnt"></span></label><div class="chips" id="aChips"></div></div>
+    <div class="plist" id="plist"></div>
+  </aside>
+</section>
+
+<script>
+/* =====================================================================
+   Firebase 설정 — 본인 프로젝트 값으로 교체 (학생용 파일과 동일한 값).
+   Authentication > 익명 로그인 활성화.
+   권장 보안 규칙:
+   { "rules": { "rooms": { "$code": {
+       ".read": "auth != null",
+       "meta":    { ".write": "auth != null && (!data.exists() || data.child('ownerUid').val() == auth.uid)" },
+       "draws":   { ".write": "root.child('rooms/'+$code+'/meta/ownerUid').val() == auth.uid" },
+       "results": { ".write": "root.child('rooms/'+$code+'/meta/ownerUid').val() == auth.uid" },
+       "private": { ".read":  "root.child('rooms/'+$code+'/meta/ownerUid').val() == auth.uid",
+                    ".write": "root.child('rooms/'+$code+'/meta/ownerUid').val() == auth.uid" },
+       "players": { "$uid": { ".write": "auth.uid == $uid",
+                    "values": { "$idx": { ".write": "auth.uid == $uid && !data.exists()" } } } }
+   } } } }
+   ===================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDDQ17TEDuCIlm3g6SlVYjYtuwzJKkYl1o",
+  authDomain: "streams-4aaff.firebaseapp.com",
+  databaseURL: "https://streams-4aaff-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "streams-4aaff",
+  storageBucket: "streams-4aaff.firebasestorage.app",
+  messagingSenderId: "560403657812",
+  appId: "1:560403657812:web:b4ab7219f26c51e34ea9c1",
+  measurementId: "G-1Y4GQ5RRFM"
+};
+
+const SCORE=[0,0,3,8,15,25,35,50,65,80,100,120,140,165,190,220,250,280,310,350,400];
+const COLORS={blue:'#3FA9E0',orange:'#F5921E',lime:'#8CC63F',green:'#2E9E63',purple:'#5B3F9E'};
+const S=(ox,oy,arr)=>arr.map(([x,y,f])=>({x:(x-ox)*2,y:(y-oy)*2,shared:f==='P'}));
+const SCENARIOS={
+  A:{panel:'#F28C1B',title:'한 줄 노선',cells:20,desc:'기본 스트림스. 파랑 노선 20개 역을 모두 채운 뒤 오름차순 구간마다 점수를 얻습니다.',
+     stations:S(45,205,[[90,240],[145,240],[200,275],[200,330],[165,385],[130,455],[185,455],[235,495],[290,490],[320,440],[350,390],[350,335],[350,280],[405,270],[460,315],[500,355],[550,310],[605,265],[605,375],[605,430]]),
+     lines:[{id:'blue',idx:[...Array(20).keys()]}],rounds:[{lines:['blue'],label:'1R'}]},
+  B:{panel:'#F5B81C',title:'두 번의 라운드',cells:20,desc:'1라운드는 주황 노선(10역), 2라운드는 파랑 노선(20역). 보라색 공용역은 1라운드에 채운 숫자를 그대로 씁니다.',
+     stations:S(45,735,[[90,770],[145,770],[200,770],[240,815],[200,860],[200,915,'P'],[145,975],[200,975],[255,975],[310,975],[365,1010],[420,1015],[480,1015],[480,965],[480,915,'P'],[480,855],[480,805],[560,795],[600,850],[600,910],[90,860],[145,915],[255,915],[310,860],[365,860],[420,895],[545,950],[600,975]]),
+     lines:[{id:'blue',idx:[...Array(20).keys()]},{id:'orange',idx:[20,21,5,22,23,24,25,14,26,27]}],
+     rounds:[{lines:['orange'],label:'1R',newBag:true},{lines:['blue'],label:'2R',newBag:true}]},
+  C:{panel:'#31A56A',title:'순환선',cells:20,desc:'시작 전 원하는 역 2곳에 ★을 그립니다. 순환 노선이므로 오름차순 구간이 한 바퀴를 돌아 이어질 수 있습니다.',
+     stations:S(45,205,[[150,265],[105,315],[88,370],[105,425],[150,465],[215,470],[280,475],[345,475],[410,475],[470,470],[535,465],[580,425],[600,370],[585,315],[535,270],[470,265],[410,260],[345,260],[280,260],[215,260]]),
+     lines:[{id:'blue',idx:[...Array(20).keys()],loop:true}],rounds:[{lines:['blue'],label:'1R'}],setupStars:2},
+  D:{panel:'#5E3C9A',title:'세 갈래 환승',cells:10,desc:'세 노선(각 10역)을 원하는 순서로 채웁니다. 환승역은 두 노선 모두에 포함되며, 노선별 점수를 합산합니다.',
+     stations:S(45,735,[[105,775],[165,785],[225,805],[280,815],[335,830],[390,860,'P'],[420,910],[480,920],[540,950],[600,945],[105,950],[160,940],[215,915,'P'],[270,890],[330,880],[425,820],[480,810],[540,795],[600,785],[190,860],[230,975],[280,970],[335,1010],[385,1000],[430,990],[480,1010],[545,1015],[600,1015]]),
+     lines:[{id:'orange',idx:[0,1,2,3,4,5,6,7,8,9]},{id:'lime',idx:[10,11,12,13,14,5,15,16,17,18]},{id:'green',idx:[19,12,20,21,22,23,24,25,26,27]}],
+     rounds:[{lines:['orange','lime','green'],label:'1R'}]}
+};
+
+const $=id=>document.getElementById(id);
+const sym=v=>v==='★'?'★':v;
+const isWild=v=>v==='★';
+function makeBag(){const b=[];for(let i=1;i<=10;i++)b.push(i);for(let i=11;i<=19;i++)b.push(i,i);for(let i=20;i<=30;i++)b.push(i);b.push('★','REMOVE','CHOICE');
+  for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
+function activeIdxOf(sc,round){const s=new Set();sc.rounds[round].lines.forEach(l=>sc.lines.find(x=>x.id===l).idx.forEach(i=>s.add(i)));return [...s];}
+const placeable=d=>d.tile!=='REMOVE';
+function bestSplit(seq){
+  const n=seq.length,dp=Array(n+1).fill(0),cut=Array(n+1).fill(0);
+  for(let j=1;j<=n;j++){dp[j]=-1;let last=-Infinity,ok=true;
+    for(let i=j;i>=1;i--){const v=seq[i-1];
+      if(v===null||v===undefined)ok=false;else if(!isWild(v)){if(last!==-Infinity&&v>last)ok=false;last=v;}
+      if(!ok)break;const cand=dp[i-1]+(SCORE[j-i+1]??0);if(cand>dp[j]){dp[j]=cand;cut[j]=i;}}
+    if(dp[j]<0){dp[j]=dp[j-1];cut[j]=j;}}
+  const segs=[];let j=n;while(j>0){segs.unshift([cut[j]-1,j-1]);j=cut[j]-1;}return {score:dp[n],segs};
+}
+function scoreLine(line,values){
+  const vals=line.idx.map(i=>values[i]??null);
+  if(!line.loop){const r=bestSplit(vals);return {score:r.score,runs:r.segs.map(([a,b])=>line.idx.slice(a,b+1))};}
+  let best=null;for(let r=0;r<vals.length;r++){const rot=[...vals.slice(r),...vals.slice(0,r)],res=bestSplit(rot);
+    if(!best||res.score>best.score)best={score:res.score,runs:res.segs.map(([a,b])=>Array.from({length:b-a+1},(_,k)=>line.idx[(r+a+k)%vals.length]))};}
+  return best;
+}
+function modal({title,text,icon='!',okText='확인',cancel=true}){
+  return new Promise(res=>{$('mTitle').textContent=title;$('mText').textContent=text;$('mIc').textContent=icon;$('mOk').textContent=okText;$('mCancel').classList.toggle('hidden',!cancel);
+    $('modal').classList.remove('hidden');const done=v=>{$('modal').classList.add('hidden');res(v);};$('mOk').onclick=()=>done(true);$('mCancel').onclick=()=>done(null);});
+}
+function renderMap(svg,sc,state){
+  const st=sc.stations,act=state.active;
+  let out=`<rect width="1200" height="620" fill="#FBF1E2"/><g opacity=".35" fill="none" stroke-linecap="round" stroke-width="60">
+    <path d="M-40 120 C 300 60, 500 360, 900 300 S 1200 160, 1260 200" stroke="#F9DEC0"/><path d="M-40 520 C 250 460, 450 620, 760 540 S 1100 400, 1260 480" stroke="#CFE6F3"/><path d="M 780 -40 C 760 200, 940 320, 980 660" stroke="#F7E3A8"/></g>`;
+  for(const line of sc.lines){const on=!act||line.idx.some(i=>act.has(i)),pts=line.idx.map(i=>st[i]);
+    let d=pts.map((p,k)=>(k?'L':'M')+p.x+' '+p.y).join(' ');if(line.loop)d+=' Z';
+    out+=`<path d="${d}" fill="none" stroke="${COLORS[line.id]}" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" opacity="${on?1:.28}"/>`;
+    if(line.loop)for(let k=0;k<pts.length;k++){const a=pts[k],b=pts[(k+1)%pts.length],mx=(a.x+b.x)/2,my=(a.y+b.y)/2,ang=Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI;
+      out+=`<g transform="translate(${mx} ${my}) rotate(${ang})" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"><path d="M-9 -7 L-2 0 L-9 7 M2 -7 L9 0 L2 7"/></g>`;}}
+  st.forEach((p,i)=>{const lines=sc.lines.filter(l=>l.idx.includes(i)),on=!act||act.has(i),col=p.shared?COLORS.purple:COLORS[lines[0].id];
+    out+=`<circle cx="${p.x}" cy="${p.y}" r="31" fill="#fff" stroke="${col}" stroke-width="7" opacity="${on?1:.35}"/>`;});
+  svg.innerHTML=out;
+}
+function buildStrip(sc){const n=sc.cells,el=$('strip');el.style.gridTemplateColumns=`repeat(${n},1fr)`;
+  el.innerHTML=Array.from({length:n},(_,k)=>`<div class="cell"><div class="n">${k+1}</div><div class="v">${k?'+':''}${SCORE[k+1]}</div></div>`).join('');}
+function tileHTML(d){
+  if(d.tile==='REMOVE')return `<div class="bigtile special pop">제거<br><span>${d.removed.join(' · ')}</span></div>`;
+  if(d.tile==='CHOICE')return `<div class="bigtile special pop">선택<br><span>${d.options.join(' / ')}</span></div>`;
+  return `<div class="bigtile pop">${sym(d.tile)}</div>`;
+}
+
+let db,auth,uid=null;
+const A={name:'',code:'',sc:null,key:null,meta:null,draws:{},players:{},results:{},subs:[],bag:[]};
+function off(){A.subs.forEach(fn=>fn());A.subs=[];}
+function listen(ref,ev,cb){ref.on(ev,cb);A.subs.push(()=>ref.off(ev,cb));}
+const roomRef=()=>db.ref('rooms/'+A.code);
+const show=id=>['entry','select','game'].forEach(s=>$(s).classList.toggle('hidden',s!==id));
+
+(function init(){try{const s=JSON.parse(localStorage.getItem('sm_admin')||'{}');if(s.name)$('inName').value=s.name;$('inCode').value=s.code||String(Math.floor(1000+Math.random()*9000));}catch(e){$('inCode').value=String(Math.floor(1000+Math.random()*9000));}})();
+$('inCode').addEventListener('input',e=>e.target.value=e.target.value.replace(/\D/g,''));
+
+$('enterBtn').onclick=async()=>{
+  const name=$('inName').value.trim(),code=$('inCode').value.trim();$('entryErr').textContent='';
+  if(!name)return $('entryErr').textContent='이름을 입력하세요.';
+  if(!/^\d{4}$/.test(code))return $('entryErr').textContent='방 코드는 숫자 4자리입니다.';
+  if(firebaseConfig.apiKey==='YOUR_API_KEY')return $('entryErr').textContent='Firebase 설정이 비어 있습니다. 소스 상단 firebaseConfig를 채워주세요.';
+  $('enterBtn').disabled=true;
+  try{
+    if(!db){firebase.initializeApp(firebaseConfig);db=firebase.database();auth=firebase.auth();}
+    if(!uid){const cred=await auth.signInAnonymously();uid=cred.user.uid;}
+    A.name=name;A.code=code;localStorage.setItem('sm_admin',JSON.stringify({name,code}));
+    const snap=await roomRef().child('meta').get();
+    if(snap.exists()&&snap.val().phase!=='done'){
+      const keep=await modal({title:'진행 중인 방이 있어요',text:`코드 ${code} 방이 이미 열려 있습니다. 이어서 진행할까요?`,icon:'M',okText:'이어하기'});
+      if(keep){await roomRef().child('meta').update({ownerUid:uid});await enterRoom();}
+      else{const fresh=await modal({title:'새로 만들기',text:'기존 방의 기록이 모두 삭제됩니다.',icon:'!',okText:'삭제하고 새로'});
+        if(fresh){await roomRef().remove();show('select');}}
+    }else{if(snap.exists())await roomRef().remove();show('select');}
+  }catch(e){console.error(e);$('entryErr').textContent='연결 실패: '+(e.message||e);}
+  $('enterBtn').disabled=false;
+};
+
+(function buildCards(){
+  const c=$('cards');
+  c.innerHTML=Object.entries(SCENARIOS).map(([k,sc])=>`<button class="card" data-k="${k}"><div class="mini"><svg viewBox="0 0 1200 620" id="mini${k}"></svg></div>
+    <div class="side" style="background:${sc.panel}"><div class="badge">${k}</div><h3>${sc.title}</h3><p>${sc.desc}</p><span class="go">이 노선도로 방 열기 →</span></div></button>`).join('');
+  Object.entries(SCENARIOS).forEach(([k,sc])=>renderMap($(`mini${k}`),sc,{active:null}));
+  c.querySelectorAll('.card').forEach(b=>b.onclick=()=>createRoom(b.dataset.k));
+})();
+async function createRoom(key){
+  const sc=SCENARIOS[key];
+  await roomRef().set({meta:{scenario:key,phase:sc.setupStars?'setup':'lobby',round:0,ownerUid:uid,ownerName:A.name,createdAt:Date.now()},private:{bag:makeBag()}});
+  await enterRoom();
+}
+function setupBoard(key){A.key=key;A.sc=SCENARIOS[key];$('panel').style.background=A.sc.panel;$('pbadge').style.background=A.sc.panel;$('pbadge').textContent=key;$('pnote').textContent=A.sc.desc;$('codeShow').textContent=A.code;buildStrip(A.sc);}
+function drawsArr(round){return Object.entries(A.draws[round]||{}).map(([k,v])=>({seq:+k,...v})).sort((a,b)=>a.seq-b.seq);}
+function chipsHTML(round){const out=[];drawsArr(round).forEach(d=>{
+  if(d.tile==='REMOVE'){out.push(`<span class="chip s">제거</span>`);d.removed.forEach(x=>out.push(`<span class="chip x">${sym(x)}</span>`));}
+  else if(d.tile==='CHOICE')out.push(`<span class="chip s">선택</span><span class="chip">${sym(d.options[0])}</span><span class="chip">${sym(d.options[1])}</span>`);
+  else out.push(`<span class="chip">${sym(d.tile)}</span>`);});return out.join('');}
+
+async function enterRoom(){
+  off();show('game');$('pname').innerHTML=`${A.name}<span class="tag">관리자</span>`;
+  listen(roomRef().child('meta'),'value',s=>{const m=s.val();if(!m)return;const first=!A.meta||A.meta.scenario!==m.scenario;A.meta=m;if(first)setupBoard(m.scenario);render();});
+  listen(roomRef().child('draws'),'value',s=>{A.draws=s.val()||{};render();});
+  listen(roomRef().child('players'),'value',s=>{A.players=s.val()||{};render();});
+  listen(roomRef().child('results'),'value',s=>{A.results=s.val()||{};render();});
+  listen(roomRef().child('private/bag'),'value',s=>{A.bag=s.val()||[];render();});
+}
+function playerProgress(p,round){const need=drawsArr(round).filter(placeable).map(d=>d.seq),placed=(p.placed&&p.placed[round])||{};return {done:need.filter(s=>placed[s]).length,need:need.length};}
+function cellsToFill(){const act=activeIdxOf(A.sc,A.meta.round).length;return act-(A.key==='B'&&A.meta.round===1?2:0)-(A.key==='C'?2:0);}
+
+function render(){
+  if(!A.meta||!A.sc)return;
+  const m=A.meta,sc=A.sc,round=m.round,act=new Set(activeIdxOf(sc,round)),players=Object.entries(A.players);
+  renderMap($('map'),sc,{active:act});
+  const ds=drawsArr(round),last=ds.at(-1),bd=$('bigdraw');
+  if(m.phase==='play'&&last){bd.classList.remove('hidden');bd.innerHTML=tileHTML(last);}else bd.classList.add('hidden');
+  $('aTileView').innerHTML=last&&m.phase==='play'?tileHTML(last):`<div class="bigtile empty">?</div>`;
+
+  const need=ds.filter(placeable).length,toFill=cellsToFill(),allDrawn=need>=toFill;
+  const dot=$('sdot'),txt=$('stext');
+  if(m.phase==='lobby'){txt.textContent=`입장 ${players.length}명 · 시작을 누르세요`;dot.style.background='#8A8391';}
+  else if(m.phase==='setup'){txt.textContent=`★ 배치 완료 ${players.filter(([,p])=>p.ready).length} / ${players.length}명`;dot.style.background=COLORS.green;}
+  else if(m.phase==='play'){txt.textContent=`${sc.rounds.length>1?sc.rounds[round].label+' · ':''}${need} / ${toFill} 장 뽑음`;dot.style.background=COLORS.blue;}
+  else if(m.phase==='between'){txt.textContent=`${sc.rounds[round].label} 채점 완료`;dot.style.background=COLORS.purple;}
+  else{txt.textContent='게임 종료 · 최종 순위';dot.style.background=COLORS.purple;}
+
+  let done=0,total=players.length;
+  if(m.phase==='setup')done=players.filter(([,p])=>p.ready).length;
+  else players.forEach(([,p])=>{const pr=playerProgress(p,round);if(pr.need>0&&pr.done===pr.need)done++;});
+  $('progLbl').textContent=m.phase==='setup'?'★ 배치 완료':'현재 타일 배치 완료';
+  $('progNum').textContent=`${done} / ${total}`;$('progBar').style.width=total?(done/total*100)+'%':'0%';
+
+  $('drawBtn').disabled=m.phase!=='play'||allDrawn||!A.bag.length;
+  $('aHint').textContent=m.phase!=='play'?'':allDrawn?'모든 타일을 뽑았습니다. 채점하세요.':(done<total?`${total-done}명이 아직 놓는 중`:'전원 배치 완료');
+  $('bagCnt').textContent=`· 주머니 ${A.bag.length}장`;$('aChips').innerHTML=chipsHTML(round);
+
+  let h='';
+  if(m.phase==='lobby'||m.phase==='setup')h+=`<button class="btn light" id="startBtn" ${players.length?'':'disabled'}>게임 시작</button>`;
+  if(m.phase==='play')h+=`<button class="btn light" id="scoreBtn" ${allDrawn?'':'disabled'}>${sc.rounds[round].label} 채점하기</button>`;
+  if(m.phase==='between')h+=`<button class="btn light" id="nextBtn">${sc.rounds[round+1].label} 시작</button>`;
+  if(m.phase==='done')h+=`<button class="btn light" id="closeBtn">방 닫기</button>`;
+  $('ctl').innerHTML=h;
+  if($('startBtn'))$('startBtn').onclick=()=>roomRef().child('meta').update({phase:'play'});
+  if($('scoreBtn'))$('scoreBtn').onclick=gradeRound;
+  if($('nextBtn'))$('nextBtn').onclick=nextRound;
+  if($('closeBtn'))$('closeBtn').onclick=async()=>{if(await modal({title:'방 닫기',text:'결과 기록이 삭제되고 학생 화면이 종료됩니다.',icon:'!',okText:'닫기'})){await roomRef().remove();leave();}};
+
+  const graded=m.phase==='between'||m.phase==='done';
+  const rows=players.map(([id,p])=>{const res=A.results[id],pr=playerProgress(p,round);let st='';
+    if(m.phase==='setup')st=`<span class="st ${p.ready?'ok':''}">${p.ready?'★ 완료':'배치 중'}</span>`;
+    else if(m.phase==='play')st=`<span class="st ${pr.need&&pr.done===pr.need?'ok':''}">${pr.done}/${pr.need}</span>`;
+    return {name:p.name,st,score:res?res.total:null};});
+  if(graded)rows.sort((a,b)=>(b.score??-1)-(a.score??-1));else rows.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  $('plist').innerHTML=rows.length?rows.map((r,k)=>`<div class="row"><span class="rank ${graded&&k<3?'top':''}">${graded?k+1:'·'}</span><span class="name">${r.name}</span>${r.st}<span class="sc">${r.score??''}</span></div>`).join(''):'<div class="empty">아직 입장한 학생이 없습니다.<br>방 코드를 알려주세요.</div>';
+}
+function drawExtra(bag){while(bag.length){const t=bag.pop();if(t==='REMOVE'||t==='CHOICE'){bag.splice(Math.floor(Math.random()*bag.length),0,t);continue;}return t;}return null;}
+async function adminDraw(){
+  if($('drawBtn').disabled)return;const bag=[...A.bag];if(!bag.length)return;
+  const t=bag.pop();let d;
+  if(t==='REMOVE'){const a=drawExtra(bag),b=drawExtra(bag);d={tile:'REMOVE',removed:[a,b].filter(x=>x!==null)};}
+  else if(t==='CHOICE'){const a=drawExtra(bag),b=drawExtra(bag);d={tile:'CHOICE',options:[a,b].filter(x=>x!==null)};}
+  else d={tile:t};
+  $('drawBtn').disabled=true;
+  const upd={};upd[`draws/${A.meta.round}/${drawsArr(A.meta.round).length}`]={...d,ts:Date.now()};upd['private/bag']=bag;
+  await roomRef().update(upd);
+}
+$('drawBtn').onclick=adminDraw;
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!$('game').classList.contains('hidden')&&$('modal').classList.contains('hidden')){e.preventDefault();adminDraw();}});
+async function gradeRound(){
+  const m=A.meta,sc=A.sc,round=m.round,lines=sc.rounds[round].lines.map(id=>sc.lines.find(l=>l.id===id)),upd={};
+  Object.entries(A.players).forEach(([id,p])=>{
+    const values=[];Object.entries(p.values||{}).forEach(([k,v])=>values[+k]=v);
+    const lr=lines.map(l=>({id:l.id,...scoreLine(l,values)}));
+    const rounds={...((A.results[id]||{}).rounds||{})};rounds[round]={lines:lr,score:lr.reduce((a,x)=>a+x.score,0)};
+    upd[`results/${id}`]={name:p.name,rounds,total:Object.values(rounds).reduce((a,r)=>a+r.score,0)};
+  });
+  upd['meta/phase']=round<sc.rounds.length-1?'between':'done';
+  await roomRef().update(upd);
+}
+async function nextRound(){const r=A.meta.round+1,upd={'meta/round':r,'meta/phase':'play'};if(A.sc.rounds[r].newBag)upd['private/bag']=makeBag();await roomRef().update(upd);}
+function leave(){off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};show('entry');}
+$('backBtn').onclick=async()=>{if(await modal({title:'나가기',text:'방은 그대로 유지됩니다. 같은 코드로 다시 들어오면 이어서 진행할 수 있어요.',icon:'M',okText:'나가기'}))leave();};
+</script>
+</body>
+</html>

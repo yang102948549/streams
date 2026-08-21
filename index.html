@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>스트림스 메트로</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
@@ -20,13 +22,12 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 
 /* ===== 입장 ===== */
 #entry{height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px;padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
-.ticket{width:min(520px,100%);background:#fff;border-radius:22px;box-shadow:0 12px 32px rgba(80,50,20,.15);overflow:hidden;display:grid;grid-template-columns:1fr 12px 120px}
+.ticket{width:min(420px,100%);background:#fff;border-radius:22px;box-shadow:0 12px 32px rgba(80,50,20,.15);overflow:hidden}
+.ticket .stub{background:var(--blue);display:flex;align-items:center;justify-content:center;padding:26px 18px}
+.ticket .stub .pill{background:#fff;color:var(--ink);border:4px solid var(--ink);border-radius:999px;padding:10px 30px;font-weight:900;font-size:32px;text-align:center;line-height:1}
+.ticket .stub .pill small{display:block;font-size:14px;letter-spacing:7px;font-weight:700;margin-top:2px}
+.ticket .perf{background:repeating-linear-gradient(90deg,#d8d0c4 0 8px,transparent 8px 16px);height:3px;width:100%}
 .ticket .main{padding:18px 20px;display:flex;flex-direction:column;gap:10px}
-.ticket .perf{background:repeating-linear-gradient(180deg,#d8d0c4 0 8px,transparent 8px 16px);width:3px;margin:12px auto}
-.ticket .stub{background:var(--blue);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px}
-.ticket .stub .pill{background:#fff;color:var(--ink);border:3px solid var(--ink);border-radius:999px;padding:4px 12px;font-weight:900;font-size:16px;text-align:center;line-height:1}
-.ticket .stub .pill small{display:block;font-size:8px;letter-spacing:4px;font-weight:700}
-.ticket .stub .lbl{font-weight:800;font-size:12px;letter-spacing:1px;margin-top:4px}
 .field{background:var(--cream);border-radius:12px;padding:8px 12px}
 .field label{font-size:11px;font-weight:700;color:var(--muted);display:block}
 .field input{width:100%;border:0;background:transparent;font:700 19px 'Pretendard';color:var(--ink);user-select:text;-webkit-user-select:text}
@@ -78,6 +79,14 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 .score .tot label{font-size:10px;font-weight:700;color:var(--muted)}
 .score .tot b{font:800 26px var(--num);line-height:1}
 .score .rk{font:800 12px var(--num);background:var(--ink);color:#fff;border-radius:6px;padding:1px 6px}
+.runsbox{background:rgba(0,0,0,.15);border-radius:10px;padding:5px 6px;flex:1;min-height:0;display:flex;flex-direction:column}
+.runsbox label{font-size:9px;font-weight:700;opacity:.85;margin-bottom:3px}
+.runlist{overflow:auto;min-height:0;display:flex;flex-direction:column;gap:4px}
+.runrow{background:#fff;border-radius:8px;padding:4px 6px;display:flex;align-items:center;gap:5px}
+.runrow .sw{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.runrow .seq{font:700 12px var(--num);color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.5px}
+.runrow .pt{font:800 13px var(--num);color:var(--ink);flex-shrink:0}
+.runempty{font-size:10px;color:var(--muted);text-align:center;padding:8px 4px}
 
 /* 세로 모드 안내 */
 #rotate{position:fixed;inset:0;background:var(--ink);color:#fff;z-index:40;display:none;place-items:center;text-align:center;padding:30px}
@@ -93,16 +102,16 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 
 <section id="entry">
   <div class="ticket">
+    <div class="stub"><div class="pill">스트림스<small>메트로</small></div></div>
+    <div class="perf"></div>
     <div class="main">
       <div class="row2">
         <div class="field"><label>이름</label><input id="inName" placeholder="이름" maxlength="12" autocomplete="off"></div>
         <div class="field"><label>방 코드</label><input id="inCode" class="code" placeholder="0000" maxlength="4" inputmode="numeric" autocomplete="off"></div>
       </div>
       <div class="err" id="entryErr"></div>
-      <button class="btn" id="enterBtn">탑승하기</button>
+      <button class="btn" id="enterBtn">참여하기</button>
     </div>
-    <div class="perf"></div>
-    <div class="stub"><div class="pill">스트림스<small>메트로</small></div><div class="lbl">승객</div></div>
   </div>
 </section>
 
@@ -117,7 +126,8 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
   <aside class="side" id="side">
     <div class="top"><span class="badge" id="pbadge">A</span><span class="nm" id="pname"></span><button class="leave" id="backBtn">나가기</button></div>
     <div class="tilebox"><div id="tileView"><div class="tile wait">타일을<br>기다리는 중</div></div><div class="hint" id="hint"></div></div>
-    <div class="chipsbox"><label>뽑힌 타일</label><div class="chips" id="chips"></div></div>
+    <div class="chipsbox" id="chipsbox"><label>뽑힌 타일</label><div class="chips" id="chips"></div></div>
+    <div class="runsbox hidden" id="runsbox"><label>득점 구간</label><div class="runlist" id="runlist"></div></div>
     <div class="score hidden" id="score"></div>
   </aside>
 </section>
@@ -194,7 +204,13 @@ const show=id=>{['entry','game'].forEach(s=>$(s).classList.toggle('hidden',s!==i
 
 (function restore(){try{const s=JSON.parse(localStorage.getItem('sm_student')||'{}');if(s.name)$('inName').value=s.name;if(s.code)$('inCode').value=s.code;}catch(e){}})();
 $('inCode').addEventListener('input',e=>e.target.value=e.target.value.replace(/\D/g,''));
+function goFullscreen(){
+  const el=document.documentElement;
+  const req=el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen;
+  if(req)req.call(el).catch(()=>{});
+}
 $('enterBtn').onclick=async()=>{
+  goFullscreen(); // 사용자 클릭(제스처) 안에서 바로 호출해야 브라우저가 허용함
   const name=$('inName').value.trim(),code=$('inCode').value.trim();$('entryErr').textContent='';
   if(!name)return $('entryErr').textContent='이름을 입력하세요.';
   if(!/^\d{4}$/.test(code))return $('entryErr').textContent='방 코드는 숫자 4자리입니다.';
@@ -248,17 +264,26 @@ function render(){
     if(head.tile==='CHOICE'){
       tv.innerHTML=`<div class="choice">${head.options.map(v=>`<div class="tile sm pop ${ST.choicePick===v?'on':''}" data-v="${v}">${sym(v)}</div>`).join('')}</div>`;
       tv.querySelectorAll('.tile').forEach(el=>el.onclick=()=>{ST.choicePick=isNaN(el.dataset.v)?el.dataset.v:+el.dataset.v;render();});
-      hint.textContent=ST.choicePick===null?'둘 중 하나를 고르세요':'역을 눌러 놓으세요';
-    }else{tv.innerHTML=`<div class="tile pop">${sym(head.tile)}</div>`;hint.innerHTML=`역을 눌러 놓으세요${pending.length>1?`<br><span class="q">대기 ${pending.length-1}장</span>`:''}`;}
+      hint.textContent=ST.choicePick===null?'둘 중 하나를 고르세요':'숫자를 배치하세요';
+    }else{tv.innerHTML=`<div class="tile pop">${sym(head.tile)}</div>`;hint.innerHTML=`숫자를 배치하세요${pending.length>1?`<br><span class="q">대기 ${pending.length-1}장</span>`:''}`;}
   }else if(m.phase==='play'&&last&&last.tile==='REMOVE'){tv.innerHTML=`<div class="tile special pop">제거<br><span>${last.removed.join('·')}</span></div>`;hint.textContent='이 숫자들은 빠져요';}
   else if(m.phase==='play'){tv.innerHTML=`<div class="tile wait">다음 타일<br>기다리는 중</div>`;hint.textContent=left?'':'채점 대기';}
-  else if(m.phase==='setup'){tv.innerHTML=`<div class="tile pop">★</div>`;hint.textContent=starsLeft()?'원하는 역에 놓으세요':'준비 완료';}
+  else if(m.phase==='setup'){tv.innerHTML=`<div class="tile pop">★</div>`;hint.textContent=starsLeft()?'원하는 칸에 배치하세요':'준비 완료';}
   else{tv.innerHTML=`<div class="tile wait">${m.phase==='done'?'수고했어요!':'잠시만<br>기다려요'}</div>`;hint.textContent='';}
 
-  const chips=[];ds.forEach(d=>{if(d.tile==='REMOVE'){chips.push('<span class="chip s">제거</span>');d.removed.forEach(x=>chips.push(`<span class="chip x">${sym(x)}</span>`));}
-    else if(d.tile==='CHOICE')chips.push(`<span class="chip s">선택</span><span class="chip">${sym(d.options[0])}</span><span class="chip">${sym(d.options[1])}</span>`);
-    else chips.push(`<span class="chip">${sym(d.tile)}</span>`);});
-  $('chips').innerHTML=chips.join('');
+  if(myRes&&graded){
+    $('chipsbox').classList.add('hidden');$('runsbox').classList.remove('hidden');
+    const values=myValues();
+    const rows=(lineResults||[]).flatMap(lr=>lr.runs.filter(run=>run.length>=2).map(run=>
+      `<div class="runrow"><span class="sw" style="background:${COLORS[lr.id]}"></span><span class="seq">${run.map(i=>sym(values[i])).join(' → ')}</span><span class="pt">+${SCORE[run.length]}</span></div>`));
+    $('runlist').innerHTML=rows.length?rows.join(''):'<div class="runempty">오름차순 구간(2칸 이상)이 없어요</div>';
+  }else{
+    $('chipsbox').classList.remove('hidden');$('runsbox').classList.add('hidden');
+    const chips=[];ds.forEach(d=>{if(d.tile==='REMOVE'){chips.push('<span class="chip s">제거</span>');d.removed.forEach(x=>chips.push(`<span class="chip x">${sym(x)}</span>`));}
+      else if(d.tile==='CHOICE')chips.push(`<span class="chip s">선택</span><span class="chip">${sym(d.options[0])}</span><span class="chip">${sym(d.options[1])}</span>`);
+      else chips.push(`<span class="chip">${sym(d.tile)}</span>`);});
+    $('chips').innerHTML=chips.join('');
+  }
 
   const sb=$('score');
   if(myRes&&graded){

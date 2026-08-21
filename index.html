@@ -280,7 +280,8 @@ function render(){
   if(!A.meta||!A.sc)return;
   const m=A.meta,sc=A.sc,round=m.round,act=new Set(activeIdxOf(sc,round)),values=myValues();
   const placed=(A.me&&A.me.placed&&A.me.placed[round])||{};
-  const ds=drawsArr(round),pending=ds.filter(d=>placeable(d)&&!placed[d.seq]&&!ST.localPlacedSeqs.has(d.seq)),head=pending[0]||null,last=ds.at(-1);
+  const isPlaced=seq=>placed[seq]!==undefined&&placed[seq]!==null; // 역번호 0도 '놓음'으로 인식
+  const ds=drawsArr(round),pending=ds.filter(d=>placeable(d)&&!isPlaced(d.seq)&&!ST.localPlacedSeqs.has(d.seq)),head=pending[0]||null,last=ds.at(-1);
   const myRes=A.results[uid]||null,graded=m.phase==='between'||m.phase==='done';
   let lineResults=null,runs=null;
   if(myRes&&graded){

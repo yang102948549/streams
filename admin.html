@@ -283,7 +283,13 @@ function tileHTML(d){
 let db,auth,uid=null;
 const A={name:'',code:'',sc:null,key:null,meta:null,draws:{},players:{},results:{},subs:[],bag:[]};
 function off(){A.subs.forEach(fn=>fn());A.subs=[];}
-function listen(ref,ev,cb){ref.on(ev,cb);A.subs.push(()=>ref.off(ev,cb));}
+function listen(ref,ev,cb){
+  ref.on(ev,cb,err=>{
+    console.error('LISTEN DENIED:',ref.toString(),err);
+    modal({title:'실시간 연결 오류',text:`'${ref.toString().split('/').slice(-2).join('/')}' 경로 읽기가 거부됐습니다.\n\n(${err.message||err})\n\nFirebase 보안 규칙이 정확히 게시됐는지 확인해 주세요.`,icon:'!',cancel:false});
+  });
+  A.subs.push(()=>ref.off(ev,cb));
+}
 const roomRef=()=>db.ref('rooms/'+A.code);
 const show=id=>['entry','select','game'].forEach(s=>$(s).classList.toggle('hidden',s!==id));
 

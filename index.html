@@ -109,10 +109,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
     <div class="stub"><div class="pill">스트림스<small>메트로</small></div></div>
     <div class="perf"></div>
     <div class="main">
-      <div class="row2">
-        <div class="field"><label>이름</label><input id="inName" placeholder="이름" maxlength="12" autocomplete="off"></div>
-        <div class="field"><label>방 코드</label><input id="inCode" class="code" placeholder="0000" maxlength="4" inputmode="numeric" autocomplete="off"></div>
-      </div>
+      <div class="field"><label>이름</label><input id="inName" placeholder="이름" maxlength="12" autocomplete="off"></div>
       <div class="err" id="entryErr"></div>
       <button class="btn" id="enterBtn">참여하기</button>
     </div>
@@ -220,7 +217,7 @@ function renderMap(svg,sc,state){
 }
 
 let db,auth,uid=null;
-const A={name:'',code:'',sc:null,key:null,meta:null,draws:{},me:null,results:{},subs:[]};
+const A={name:'',sc:null,key:null,meta:null,draws:{},me:null,results:{},subs:[]};
 const ST={choicePick:null,localValues:{},localPlacedSeqs:new Set()};
 function off(){A.subs.forEach(fn=>fn());A.subs=[];}
 function listen(ref,ev,cb){
@@ -230,11 +227,10 @@ function listen(ref,ev,cb){
   });
   A.subs.push(()=>ref.off(ev,cb));
 }
-const roomRef=()=>db.ref('rooms/'+A.code);
+const roomRef=()=>db.ref('room');
 const show=id=>{['entry','game'].forEach(s=>$(s).classList.toggle('hidden',s!==id));$('rotate').classList.toggle('on',id==='game');};
 
-(function restore(){try{const s=JSON.parse(localStorage.getItem('sm_student')||'{}');if(s.name)$('inName').value=s.name;if(s.code)$('inCode').value=s.code;}catch(e){}})();
-$('inCode').addEventListener('input',e=>e.target.value=e.target.value.replace(/\D/g,''));
+(function restore(){try{const s=JSON.parse(localStorage.getItem('sm_student')||'{}');if(s.name)$('inName').value=s.name;}catch(e){}})();
 function goFullscreen(){
   const el=document.documentElement;
   const req=el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen;
@@ -242,17 +238,16 @@ function goFullscreen(){
 }
 $('enterBtn').onclick=async()=>{
   goFullscreen(); // 사용자 클릭(제스처) 안에서 바로 호출해야 브라우저가 허용함
-  const name=$('inName').value.trim(),code=$('inCode').value.trim();$('entryErr').textContent='';
+  const name=$('inName').value.trim();$('entryErr').textContent='';
   if(!name)return $('entryErr').textContent='이름을 입력하세요.';
-  if(!/^\d{4}$/.test(code))return $('entryErr').textContent='방 코드는 숫자 4자리입니다.';
   if(firebaseConfig.apiKey==='YOUR_API_KEY')return $('entryErr').textContent='Firebase 설정이 비어 있습니다.';
   $('enterBtn').disabled=true;
   try{
     if(!db){firebase.initializeApp(firebaseConfig);db=firebase.database();auth=firebase.auth();}
     if(!uid){const cred=await auth.signInAnonymously();uid=cred.user.uid;}
-    A.name=name;A.code=code;localStorage.setItem('sm_student',JSON.stringify({name,code}));
+    A.name=name;localStorage.setItem('sm_student',JSON.stringify({name}));
     const snap=await roomRef().child('meta').get();
-    if(!snap.exists()){$('entryErr').textContent='열려 있는 방이 없어요. 코드를 확인하세요.';$('enterBtn').disabled=false;return;}
+    if(!snap.exists()){$('entryErr').textContent='아직 선생님이 게임을 시작하지 않았어요. 잠시 후 다시 시도해 주세요.';$('enterBtn').disabled=false;return;}
     await enterRoom();
   }catch(e){console.error(e);$('entryErr').textContent='연결 실패: '+(e.message||e);}
   $('enterBtn').disabled=false;
@@ -261,7 +256,7 @@ $('enterBtn').onclick=async()=>{
 async function enterRoom(){
   off();show('game');$('pname').textContent=A.name;
   await roomRef().child('players/'+uid).update({name:A.name,joinedAt:Date.now()});
-  listen(roomRef().child('meta'),'value',s=>{const m=s.val();if(!m){leave('선생님이 방을 닫았어요.');return;}
+  listen(roomRef().child('meta'),'value',s=>{const m=s.val();if(!m){leave('선생님이 게임을 종료했어요.');return;}
     const first=!A.meta||A.meta.scenario!==m.scenario;A.meta=m;if(first){A.key=m.scenario;A.sc=SCENARIOS[A.key];$('side').style.background=A.sc.panel;$('pbadge').textContent=A.key;}render();});
   listen(roomRef().child('draws'),'value',s=>{A.draws=s.val()||{};render();});
   listen(roomRef().child('players/'+uid),'value',s=>{

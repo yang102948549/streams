@@ -189,8 +189,15 @@ function renderMap(svg,sc,state){
       out+=`<path d="${d}" fill="none" stroke="#fff" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>`;
       out+=`<path class="runpath" pathLength="1" style="animation-delay:${n*.12}s" d="${d}" fill="none" stroke="${r.color}" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>`;
       const m=(pts.length-1)/2,a=pts[Math.floor(m)],b=pts[Math.ceil(m)];
-      const bx=(a.x+b.x)/2,by=(a.y+b.y)/2-46,label=`${r.idx.length}칸 +${r.score}`;
-      const bw=label.length*11+26;
+      const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+      const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);
+      let px,py;
+      if(len<1){px=0;py=-1;} // 구간 중앙점이 겹치는 경우(홀수 길이) 기본 위쪽
+      else{px=-dy/len;py=dx/len;if(py>0){px=-px;py=-py;}} // 항상 트랙 바깥쪽(위쪽 선호)으로 배지 배치
+      const label=`${r.idx.length}칸 +${r.score}`,bw=label.length*11+26,bh=34,off=46,pad=8;
+      let bx=mx+px*off,by=my+py*off;
+      bx=Math.min(1200-bw/2-pad,Math.max(bw/2+pad,bx)); // 화면 밖으로 잘리지 않게 클램프
+      by=Math.min(620-bh/2-pad,Math.max(bh/2+pad,by));
       out+=`<g class="runbadge" style="animation-delay:${.7+n*.12}s">
         <rect x="${bx-bw/2}" y="${by-17}" width="${bw}" height="34" rx="17" fill="#fff" stroke="${r.color}" stroke-width="4"/>
         <text x="${bx}" y="${by+1}" text-anchor="middle" dominant-baseline="central" font-family="Barlow Condensed,Pretendard" font-weight="800" font-size="20" fill="${r.color}">${label}</text></g>`;
@@ -214,7 +221,7 @@ function renderMap(svg,sc,state){
 
 let db,auth,uid=null;
 const A={name:'',code:'',sc:null,key:null,meta:null,draws:{},me:null,results:{},subs:[]};
-const ST={choicePick:null};
+const ST={choicePick:null,localValues:{},localPlacedSeqs:new Set()};
 function off(){A.subs.forEach(fn=>fn());A.subs=[];}
 function listen(ref,ev,cb){
   ref.on(ev,cb,err=>{
@@ -257,18 +264,28 @@ async function enterRoom(){
   listen(roomRef().child('meta'),'value',s=>{const m=s.val();if(!m){leave('선생님이 방을 닫았어요.');return;}
     const first=!A.meta||A.meta.scenario!==m.scenario;A.meta=m;if(first){A.key=m.scenario;A.sc=SCENARIOS[A.key];$('side').style.background=A.sc.panel;$('pbadge').textContent=A.key;}render();});
   listen(roomRef().child('draws'),'value',s=>{A.draws=s.val()||{};render();});
-  listen(roomRef().child('players/'+uid),'value',s=>{A.me=s.val()||{};render();});
+  listen(roomRef().child('players/'+uid),'value',s=>{
+    A.me=s.val()||{};
+    const rnd=A.meta?A.meta.round:0,placedNow=(A.me.placed&&A.me.placed[rnd])||{};
+    Object.keys(placedNow).forEach(seq=>ST.localPlacedSeqs.delete(+seq));
+    Object.keys(ST.localValues).forEach(idx=>{if(A.me.values&&A.me.values[idx]!=null)delete ST.localValues[idx];});
+    render();
+  });
   listen(roomRef().child('results'),'value',s=>{A.results=s.val()||{};render();});
 }
 function drawsArr(round){return Object.entries(A.draws[round]||{}).map(([k,v])=>({seq:+k,...v})).sort((a,b)=>a.seq-b.seq);}
-function myValues(){const v=[];Object.entries((A.me&&A.me.values)||{}).forEach(([k,x])=>v[+k]=x);return v;}
+function myValues(){
+  const v=[];Object.entries((A.me&&A.me.values)||{}).forEach(([k,x])=>v[+k]=x);
+  Object.entries(ST.localValues).forEach(([k,x])=>{if(v[+k]==null)v[+k]=x;}); // 서버 왕복 전 즉시 반영
+  return v;
+}
 function starsLeft(){return Math.max(0,(A.sc.setupStars||0)-myValues().filter(x=>x==='★').length);}
 
 function render(){
   if(!A.meta||!A.sc)return;
   const m=A.meta,sc=A.sc,round=m.round,act=new Set(activeIdxOf(sc,round)),values=myValues();
   const placed=(A.me&&A.me.placed&&A.me.placed[round])||{};
-  const ds=drawsArr(round),pending=ds.filter(d=>placeable(d)&&!placed[d.seq]),head=pending[0]||null,last=ds.at(-1);
+  const ds=drawsArr(round),pending=ds.filter(d=>placeable(d)&&!placed[d.seq]&&!ST.localPlacedSeqs.has(d.seq)),head=pending[0]||null,last=ds.at(-1);
   const myRes=A.results[uid]||null,graded=m.phase==='between'||m.phase==='done';
   let lineResults=null,runs=null;
   if(myRes&&graded){
@@ -328,15 +345,24 @@ function render(){
 }
 async function place(i,head){
   const m=A.meta,values=myValues();if(values[i]!=null)return;
-  if(m.phase==='setup'){if(starsLeft()<=0)return;
-    await roomRef().child(`players/${uid}/values/${i}`).set('★');
-    const v=myValues();v[i]='★';await roomRef().child(`players/${uid}`).update({ready:v.filter(x=>x==='★').length>=A.sc.setupStars});return;}
-  if(!head)return;const v=head.tile==='CHOICE'?ST.choicePick:head.tile;if(v===null||v===undefined)return;
+  if(m.phase==='setup'){
+    if(starsLeft()<=0)return;
+    ST.localValues[i]='★';render(); // 즉시 반영: 다음 클릭이 남은 개수를 잘못 계산하지 않도록
+    try{
+      await roomRef().child(`players/${uid}/values/${i}`).set('★');
+      const v=myValues();await roomRef().child(`players/${uid}`).update({ready:v.filter(x=>x==='★').length>=A.sc.setupStars});
+    }catch(e){console.error(e);delete ST.localValues[i];render();}
+    return;
+  }
+  if(!head||ST.localPlacedSeqs.has(head.seq))return; // 이미 처리 중인 타일이면 재사용 금지
+  const v=head.tile==='CHOICE'?ST.choicePick:head.tile;if(v===null||v===undefined)return;
+  ST.localPlacedSeqs.add(head.seq);ST.localValues[i]=v;ST.choicePick=null;
+  render(); // 서버 응답을 기다리지 않고 즉시 화면에 반영 → 다음 렌더에서 head가 바로 다음 타일로 넘어감
   const upd={};upd[`values/${i}`]=v;upd[`placed/${m.round}/${head.seq}`]=i;if(head.tile==='CHOICE')upd[`choices/${m.round}/${head.seq}`]=v;
-  ST.choicePick=null;
-  try{await roomRef().child('players/'+uid).update(upd);}catch(e){console.error(e);}
+  try{await roomRef().child('players/'+uid).update(upd);}
+  catch(e){console.error(e);ST.localPlacedSeqs.delete(head.seq);delete ST.localValues[i];render();}
 }
-function leave(msg){off();A.meta=null;A.sc=null;A.draws={};A.me=null;A.results={};show('entry');if(msg)modal('알림',msg);}
+function leave(msg){off();A.meta=null;A.sc=null;A.draws={};A.me=null;A.results={};ST.localValues={};ST.localPlacedSeqs=new Set();ST.choicePick=null;show('entry');if(msg)modal('알림',msg);}
 $('backBtn').onclick=()=>leave();
 </script>
 </body>

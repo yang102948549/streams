@@ -287,8 +287,8 @@ function scoreLine(line,values){
     if(!best||res.score>best.score)best={score:res.score,runs:res.segs.map(([a,b])=>Array.from({length:b-a+1},(_,k)=>line.idx[(r+a+k)%vals.length]))};}
   return best;
 }
-function modal({title,text,icon='!',okText='확인',cancel=true}){
-  return new Promise(res=>{$('mTitle').textContent=title;$('mText').textContent=text;$('mIc').textContent=icon;$('mOk').textContent=okText;$('mCancel').classList.toggle('hidden',!cancel);
+function modal({title,text,icon='!',okText='확인',cancel=true,cancelText='취소'}){
+  return new Promise(res=>{$('mTitle').textContent=title;$('mText').textContent=text;$('mIc').textContent=icon;$('mOk').textContent=okText;$('mCancel').textContent=cancelText;$('mCancel').classList.toggle('hidden',!cancel);
     $('modal').classList.remove('hidden');const done=v=>{$('modal').classList.add('hidden');res(v);};$('mOk').onclick=()=>done(true);$('mCancel').onclick=()=>done(null);});
 }
 const PLACE_LABEL=['1위','2위','3위'];
@@ -393,11 +393,27 @@ function chipsHTML(round){const out=[];drawsArr(round).forEach(d=>{
 
 async function enterRoom(){
   off();show('game');$('pname').innerHTML=`${A.name}<span class="tag">관리자</span>`;
-  listen(roomRef().child('meta'),'value',s=>{const m=s.val();if(!m)return;const first=!A.meta||A.meta.scenario!==m.scenario;A.meta=m;if(first)setupBoard(m.scenario);render();});
+  listen(roomRef().child('meta'),'value',s=>{
+    const m=s.val();if(!m)return;
+    const prevPhase=A.meta&&A.meta.phase;
+    const first=!A.meta||A.meta.scenario!==m.scenario;
+    A.meta=m;if(first)setupBoard(m.scenario);
+    render();
+    // 단계가 방금 바뀐 경우, 사이드바 버튼을 보지 못해도 놓치지 않도록 팝업을 자동으로 띄운다
+    if(prevPhase&&prevPhase!==m.phase){
+      if(m.phase==='between')announceNextRound(m.round);
+      else if(m.phase==='done')showRankPopup();
+    }
+  });
   listen(roomRef().child('draws'),'value',s=>{A.draws=s.val()||{};Object.keys(A.draws).forEach(r=>{A.seqNext[r]=Math.max(A.seqNext[r]||0,drawsArr(+r).length);});render();});
   listen(roomRef().child('players'),'value',s=>{A.players=s.val()||{};render();});
   listen(roomRef().child('results'),'value',s=>{A.results=s.val()||{};render();});
   listen(roomRef().child('private/bag'),'value',s=>{A.bag=s.val()||[];render();});
+}
+async function announceNextRound(round){
+  const doneLabel=A.sc.rounds[round].label,nextLabel=A.sc.rounds[round+1].label;
+  const go=await modal({title:`${doneLabel} 채점 완료`,text:`${nextLabel}를 시작할까요? "나중에"를 누르면 준비되었을 때 사이드바의 버튼으로 시작할 수 있어요.`,icon:'M',okText:`${nextLabel} 시작`,cancel:true,cancelText:'나중에'});
+  if(go)nextRound();
 }
 function playerProgress(p,round){const need=drawsArr(round).filter(placeable).map(d=>d.seq),placed=(p.placed&&p.placed[round])||{};return {done:need.filter(s=>placed[s]!==undefined&&placed[s]!==null).length,need:need.length};}
 function cellsToFill(){const act=activeIdxOf(A.sc,A.meta.round).length;return act-(A.key==='B'&&A.meta.round===1?2:0)-(A.key==='C'?2:0);}

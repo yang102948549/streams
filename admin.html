@@ -335,7 +335,11 @@ function listen(ref,ev,cb){
 const roomRef=()=>db.ref('room');
 const show=id=>['entry','select','game'].forEach(s=>$(s).classList.toggle('hidden',s!==id));
 // 'room' 노드 자체를 remove()하면 규칙상 거부되므로(부모 경로에 .write 없음) 자식들을 개별 null로 지운다
-const clearRoom=()=>roomRef().update({meta:null,draws:null,results:null,private:null,players:null});
+const clearRoom=async()=>{
+  await roomRef().update({meta:null,draws:null,results:null,private:null,players:null});
+  const check=await roomRef().child('meta').get(); // 정말 지워졌는지 서버에서 다시 확인
+  if(check.exists())throw new Error('삭제가 서버에 반영되지 않았습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.');
+};
 function showErr(title,e){console.error(e);return modal({title,text:'오류: '+(e&&e.message||e)+'\n\nFirebase 보안 규칙이 최신(room 경로, auth != null) 버전으로 게시되어 있는지 확인해 주세요.',icon:'!',cancel:false});}
 
 (function init(){try{const s=JSON.parse(localStorage.getItem('sm_admin')||'{}');if(s.name)$('inName').value=s.name;}catch(e){}})();
@@ -435,7 +439,7 @@ function render(){
   $('ctl').innerHTML=h;
   if($('startBtn'))$('startBtn').onclick=()=>roomRef().child('meta').update({phase:'play'}).catch(e=>showErr('게임 시작 실패',e));
   if($('nextBtn'))$('nextBtn').onclick=nextRound;
-  if($('closeBtn'))$('closeBtn').onclick=async()=>{if(await modal({title:'방 닫기',text:'결과 기록이 삭제되고 학생 화면이 종료됩니다.',icon:'!',okText:'닫기'})){try{await clearRoom();leave();}catch(e){await showErr('방 닫기 실패',e);}}};
+  if($('closeBtn'))$('closeBtn').onclick=async()=>{if(await modal({title:'방 닫기',text:'결과 기록이 삭제되고 학생 화면이 종료됩니다.',icon:'!',okText:'닫기'})){off();try{await clearRoom();leave();}catch(e){await showErr('방 닫기 실패',e);}}};
   if($('rankBtn'))$('rankBtn').onclick=showRankPopup;
 }
 function drawExtra(bag){while(bag.length){const t=bag.pop();if(t==='REMOVE'||t==='CHOICE'){bag.splice(Math.floor(Math.random()*bag.length),0,t);continue;}return t;}return null;}
@@ -476,11 +480,12 @@ function leave(){off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={
 $('backBtn').onclick=async()=>{if(await modal({title:'나가기',text:'게임은 그대로 유지됩니다. 다시 로그인하면 이어서 진행할 수 있어요.',icon:'M',okText:'나가기'}))leave();};
 $('resetBtn').onclick=async()=>{
   if(!(await modal({title:'게임 초기화',text:'현재 진행 상황(학생 배치, 뽑은 타일, 점수)이 모두 삭제되고 처음부터 다시 시작합니다. 계속할까요?',icon:'!',okText:'초기화'})))return;
+  off(); // 삭제 도중 남은 리스너가 옛 데이터로 화면을 다시 그리지 않도록 먼저 끊는다
   try{
     await clearRoom();
-    off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};A.bag=[];A.seqNext={};A.drawing=false;A.grading=false;
+    A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};A.bag=[];A.seqNext={};A.drawing=false;A.grading=false;
     show('select');
-  }catch(e){await showErr('초기화 실패',e);}
+  }catch(e){await showErr('초기화 실패',e);} // 실패하면 select로 넘어가지 않고 게임 화면에 그대로 머무른다
 };
 </script>
 </body>

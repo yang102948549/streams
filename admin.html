@@ -157,7 +157,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
     <div class="perf"></div>
     <div class="stub"><div class="badge">M</div><div class="lbl">관리자</div></div>
   </div>
-  <p style="margin-top:14px;font-size:11px;color:#c9c0b0;text-align:center">build 2026-08-22-rank1</p>
+  <p style="margin-top:14px;font-size:11px;color:#c9c0b0;text-align:center">build 2026-08-22-rank2</p>
 </section>
 
 <div id="modal" class="hidden"><div class="mbox">
@@ -207,6 +207,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
       <button class="btn rankbtn" id="rankBtn">순위 집계 보기</button>
     </div>
     <div class="history"><label>뽑힌 타일 <span id="bagCnt"></span></label><div class="chips" id="aChips"></div></div>
+    <p style="font-size:10px;color:rgba(255,255,255,.55);text-align:center;margin:0">build 2026-08-22-rank2</p>
   </aside>
 </section>
 
@@ -352,7 +353,7 @@ $('enterBtn').onclick=async()=>{
   try{
     if(!db){firebase.initializeApp(firebaseConfig);db=firebase.database();auth=firebase.auth();}
     if(!uid){const cred=await auth.signInAnonymously();uid=cred.user.uid;}
-    A.name=name;localStorage.setItem('sm_admin',JSON.stringify({name}));
+    A.name=name;try{localStorage.setItem('sm_admin',JSON.stringify({name}));}catch(e){}
     const snap=await roomRef().child('meta').get();
     if(snap.exists()&&snap.val().phase!=='done'){
       const keep=await modal({title:'진행 중인 게임이 있어요',text:'이어서 진행할까요?',icon:'M',okText:'이어하기'});
@@ -395,25 +396,14 @@ async function enterRoom(){
   off();show('game');$('pname').innerHTML=`${A.name}<span class="tag">관리자</span>`;
   listen(roomRef().child('meta'),'value',s=>{
     const m=s.val();if(!m)return;
-    const prevPhase=A.meta&&A.meta.phase;
     const first=!A.meta||A.meta.scenario!==m.scenario;
     A.meta=m;if(first)setupBoard(m.scenario);
     render();
-    // 단계가 방금 바뀐 경우, 사이드바 버튼을 보지 못해도 놓치지 않도록 팝업을 자동으로 띄운다
-    if(prevPhase&&prevPhase!==m.phase){
-      if(m.phase==='between')announceNextRound(m.round);
-      else if(m.phase==='done')showRankPopup();
-    }
   });
   listen(roomRef().child('draws'),'value',s=>{A.draws=s.val()||{};Object.keys(A.draws).forEach(r=>{A.seqNext[r]=Math.max(A.seqNext[r]||0,drawsArr(+r).length);});render();});
   listen(roomRef().child('players'),'value',s=>{A.players=s.val()||{};render();});
   listen(roomRef().child('results'),'value',s=>{A.results=s.val()||{};render();});
   listen(roomRef().child('private/bag'),'value',s=>{A.bag=s.val()||[];render();});
-}
-async function announceNextRound(round){
-  const doneLabel=A.sc.rounds[round].label,nextLabel=A.sc.rounds[round+1].label;
-  const go=await modal({title:`${doneLabel} 채점 완료`,text:`${nextLabel}를 시작할까요? "나중에"를 누르면 준비되었을 때 사이드바의 버튼으로 시작할 수 있어요.`,icon:'M',okText:`${nextLabel} 시작`,cancel:true,cancelText:'나중에'});
-  if(go)nextRound();
 }
 function playerProgress(p,round){const need=drawsArr(round).filter(placeable).map(d=>d.seq),placed=(p.placed&&p.placed[round])||{};return {done:need.filter(s=>placed[s]!==undefined&&placed[s]!==null).length,need:need.length};}
 function cellsToFill(){const act=activeIdxOf(A.sc,A.meta.round).length;return act-(A.key==='B'&&A.meta.round===1?2:0)-(A.key==='C'?2:0);}

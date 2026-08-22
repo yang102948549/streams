@@ -135,15 +135,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
 .rankTitle{font-size:20px;font-weight:800;letter-spacing:6px;color:var(--muted);margin-bottom:28px}
 .rankList{display:flex;flex-direction:column;gap:18px}
 .rankRow{display:grid;grid-template-columns:90px 1fr auto;align-items:center;gap:24px;background:#fff;border-radius:22px;padding:18px 30px;box-shadow:0 8px 20px rgba(80,50,20,.1)}
-.rankRow .medal{font:900 44px var(--num);line-height:1}
-.rankRow .rname{font-weight:800;font-size:34px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rankRow .rscore{font:900 46px var(--num)}
-.rankRow.n1{background:linear-gradient(135deg,#FFE7A0,#FFD24C);transform:scale(1.06)}
-.rankRow.n1 .medal,.rankRow.n1 .rscore{color:#8a5a00}
-.rankRow.n2{background:linear-gradient(135deg,#F1F1F4,#D9D9E0)}
-.rankRow.n2 .medal,.rankRow.n2 .rscore{color:#5c5c66}
-.rankRow.n3{background:linear-gradient(135deg,#F3D8B8,#E0AE79)}
-.rankRow.n3 .medal,.rankRow.n3 .rscore{color:#7a4a1a}
+.rankRow .place{font:800 20px 'Pretendard';color:#fff;background:var(--ink);border-radius:999px;padding:10px 6px;text-align:center;letter-spacing:1px}
+.rankRow .rname{font-weight:800;font-size:34px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.rankRow .rscore{font:900 46px var(--num);color:var(--ink)}
 .rankEmpty{padding:40px 10px;color:var(--muted);font-size:18px;font-weight:600}
 .ctl{display:flex;flex-direction:column;gap:8px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -173,7 +167,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
 <div id="rankModal" class="hidden">
   <div class="rankbox">
     <button class="rankClose" id="rankClose">✕</button>
-    <div class="rankTitle">현재 순위</div>
+    <div class="rankTitle">최종 순위</div>
     <div id="rankList" class="rankList"></div>
   </div>
 </div>
@@ -291,11 +285,11 @@ function modal({title,text,icon='!',okText='확인',cancel=true}){
   return new Promise(res=>{$('mTitle').textContent=title;$('mText').textContent=text;$('mIc').textContent=icon;$('mOk').textContent=okText;$('mCancel').classList.toggle('hidden',!cancel);
     $('modal').classList.remove('hidden');const done=v=>{$('modal').classList.add('hidden');res(v);};$('mOk').onclick=()=>done(true);$('mCancel').onclick=()=>done(null);});
 }
-const MEDAL=['🥇','🥈','🥉'];
+const PLACE_LABEL=['1위','2위','3위'];
 function showRankPopup(){
   const top=Object.values(A.results).sort((a,b)=>b.total-a.total).slice(0,3);
   $('rankList').innerHTML=top.length?top.map((r,k)=>
-    `<div class="rankRow n${k+1}"><span class="medal">${MEDAL[k]}</span><span class="rname">${r.name}</span><span class="rscore">${r.total}</span></div>`
+    `<div class="rankRow"><span class="place">${PLACE_LABEL[k]}</span><span class="rname">${r.name}</span><span class="rscore">${r.total}</span></div>`
   ).join(''):'<div class="rankEmpty">아직 집계된 점수가 없습니다.</div>';
   $('rankModal').classList.remove('hidden');
 }
@@ -433,9 +427,10 @@ function render(){
   let h='';
   if(m.phase==='lobby'||m.phase==='setup')h+=`<button class="btn light" id="startBtn" ${players.length?'':'disabled'}>게임 시작</button>`;
   if(m.phase==='between')h+=`<button class="btn light" id="nextBtn">${sc.rounds[round+1].label} 시작</button>`;
-  if(m.phase==='done')h+=`<button class="btn light" id="closeBtn">방 닫기</button>`;
-  const hasResults=Object.keys(A.results).length>0;
-  h+=`<button class="btn rankbtn" id="rankBtn" ${hasResults?'':'disabled'}>🏆 순위 집계 보기</button>`;
+  if(m.phase==='done'){
+    h+=`<button class="btn light" id="closeBtn">방 닫기</button>`;
+    h+=`<button class="btn rankbtn" id="rankBtn">순위 집계 보기</button>`;
+  }
   $('ctl').innerHTML=h;
   if($('startBtn'))$('startBtn').onclick=()=>roomRef().child('meta').update({phase:'play'}).catch(e=>showErr('게임 시작 실패',e));
   if($('nextBtn'))$('nextBtn').onclick=nextRound;

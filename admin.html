@@ -157,7 +157,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
     <div class="perf"></div>
     <div class="stub"><div class="badge">M</div><div class="lbl">관리자</div></div>
   </div>
-  <p style="margin-top:14px;font-size:11px;color:#c9c0b0;text-align:center">build 2026-08-22-rank2</p>
+  <p style="margin-top:14px;font-size:11px;color:#c9c0b0;text-align:center">build 2026-08-22-rank3</p>
 </section>
 
 <div id="modal" class="hidden"><div class="mbox">
@@ -207,7 +207,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
       <button class="btn rankbtn" id="rankBtn">순위 집계 보기</button>
     </div>
     <div class="history"><label>뽑힌 타일 <span id="bagCnt"></span></label><div class="chips" id="aChips"></div></div>
-    <p style="font-size:10px;color:rgba(255,255,255,.55);text-align:center;margin:0">build 2026-08-22-rank2</p>
+    <p style="font-size:10px;color:rgba(255,255,255,.55);text-align:center;margin:0">build 2026-08-22-rank3</p>
   </aside>
 </section>
 
@@ -436,14 +436,12 @@ function render(){
   // 자동 종료: 타일을 다 뽑았고 입장한 학생 전원이 배치를 마치면 자동 채점
   if(m.phase==='play'&&allDrawn&&total>0&&done===total&&!A.grading)gradeRound();
 
-  // 버튼은 항상 DOM에 존재 — 여기서는 보이기/숨기기·활성/비활성만 토글한다 (내용을 매번 다시 조립하지 않음)
+  // 버튼 4개는 항상 화면에 고정 노출 — 숨기지 않고 활성/비활성만 토글한다 (레이아웃이 흔들려 스크롤 밖으로 밀려나는 걸 방지)
   const lobbyLike=m.phase==='lobby'||m.phase==='setup',betweenPhase=m.phase==='between',donePhase=m.phase==='done';
-  $('startBtn').classList.toggle('hidden',!lobbyLike);
-  $('startBtn').disabled=!players.length;
-  $('nextBtn').classList.toggle('hidden',!betweenPhase);
-  if(betweenPhase)$('nextBtn').textContent=`${sc.rounds[round+1].label} 시작`;
-  $('closeBtn').classList.toggle('hidden',!donePhase);
-  $('rankBtn').classList.remove('hidden'); // 처음부터 항상 보이고, 최종 라운드 전까지는 비활성화만 됨
+  $('startBtn').disabled=!(lobbyLike&&players.length);
+  $('nextBtn').disabled=!betweenPhase;
+  $('nextBtn').textContent=betweenPhase?`${sc.rounds[round+1].label} 시작`:'다음 라운드 시작';
+  $('closeBtn').disabled=!donePhase;
   $('rankBtn').disabled=!donePhase;
 }
 function drawExtra(bag){while(bag.length){const t=bag.pop();if(t==='REMOVE'||t==='CHOICE'){bag.splice(Math.floor(Math.random()*bag.length),0,t);continue;}return t;}return null;}

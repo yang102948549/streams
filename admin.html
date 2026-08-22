@@ -157,7 +157,6 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
     <div class="perf"></div>
     <div class="stub"><div class="badge">M</div><div class="lbl">관리자</div></div>
   </div>
-  <p style="margin-top:14px;font-size:11px;color:#c9c0b0;text-align:center">build 2026-08-22-rank3</p>
 </section>
 
 <div id="modal" class="hidden"><div class="mbox">
@@ -168,7 +167,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
 <div id="rankModal" class="hidden">
   <div class="rankbox">
     <button class="rankClose" id="rankClose">✕</button>
-    <div class="rankTitle">최종 순위</div>
+    <div class="rankTitle" id="rankTitle">순위</div>
     <div id="rankList" class="rankList"></div>
   </div>
 </div>
@@ -207,7 +206,6 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
       <button class="btn rankbtn" id="rankBtn">순위 집계 보기</button>
     </div>
     <div class="history"><label>뽑힌 타일 <span id="bagCnt"></span></label><div class="chips" id="aChips"></div></div>
-    <p style="font-size:10px;color:rgba(255,255,255,.55);text-align:center;margin:0">build 2026-08-22-rank3</p>
   </aside>
 </section>
 
@@ -294,6 +292,7 @@ function modal({title,text,icon='!',okText='확인',cancel=true,cancelText='취�
 }
 const PLACE_LABEL=['1위','2위','3위'];
 function showRankPopup(){
+  $('rankTitle').textContent=(A.meta&&A.meta.phase==='done')?'최종 순위':'현재 순위';
   const top=Object.values(A.results).sort((a,b)=>b.total-a.total).slice(0,3);
   $('rankList').innerHTML=top.length?top.map((r,k)=>
     `<div class="rankRow"><span class="place">${PLACE_LABEL[k]}</span><span class="rname">${r.name}</span><span class="rscore">${r.total}</span></div>`
@@ -324,7 +323,7 @@ function tileHTML(d){
 }
 
 let db,auth,uid=null;
-const A={name:'',sc:null,key:null,meta:null,draws:{},players:{},results:{},subs:[],bag:[],drawing:false,grading:false,seqNext:{}};
+const A={name:'',sc:null,key:null,meta:null,draws:{},players:{},results:{},subs:[],bag:[],drawing:false,gradingRound:null,seqNext:{}};
 function off(){A.subs.forEach(fn=>fn());A.subs=[];}
 function listen(ref,ev,cb){
   ref.on(ev,cb,err=>{
@@ -434,7 +433,7 @@ function render(){
   $('aHint').textContent=m.phase!=='play'?'':allDrawn?(done<total?`모든 타일을 뽑았습니다. ${total-done}명 배치 완료 대기 중 (완료되면 자동 채점)`:'전원 배치 완료 · 채점 중…'):(done<total?`${total-done}명이 아직 놓는 중`:'전원 배치 완료');
   $('bagCnt').textContent=`· 주머니 ${A.bag.length}장`;$('aChips').innerHTML=chipsHTML(round);
   // 자동 종료: 타일을 다 뽑았고 입장한 학생 전원이 배치를 마치면 자동 채점
-  if(m.phase==='play'&&allDrawn&&total>0&&done===total&&!A.grading)gradeRound();
+  if(m.phase==='play'&&allDrawn&&total>0&&done===total)gradeRound();
 
   // 버튼 4개는 항상 화면에 고정 노출 — 숨기지 않고 활성/비활성만 토글한다 (레이아웃이 흔들려 스크롤 밖으로 밀려나는 걸 방지)
   const lobbyLike=m.phase==='lobby'||m.phase==='setup',betweenPhase=m.phase==='between',donePhase=m.phase==='done';
@@ -442,7 +441,7 @@ function render(){
   $('nextBtn').disabled=!betweenPhase;
   $('nextBtn').textContent=betweenPhase?`${sc.rounds[round+1].label} 시작`:'다음 라운드 시작';
   $('closeBtn').disabled=!donePhase;
-  $('rankBtn').disabled=!donePhase;
+  // 순위 집계는 관리자 전용이라 게임 진행 상태와 무관하게 항상 열어둔다 (라운드 로직과 얽히지 않게 분리)
 }
 function drawExtra(bag){while(bag.length){const t=bag.pop();if(t==='REMOVE'||t==='CHOICE'){bag.splice(Math.floor(Math.random()*bag.length),0,t);continue;}return t;}return null;}
 async function adminDraw(){
@@ -466,8 +465,11 @@ $('closeBtn').onclick=async()=>{if(await modal({title:'방 닫기',text:'결과 
 $('rankBtn').onclick=showRankPopup;
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!$('game').classList.contains('hidden')&&$('modal').classList.contains('hidden')){e.preventDefault();adminDraw();}});
 async function gradeRound(){
-  if(A.grading)return;A.grading=true;
-  const m=A.meta,sc=A.sc,round=m.round,lines=sc.rounds[round].lines.map(id=>sc.lines.find(l=>l.id===id)),upd={};
+  const m=A.meta,sc=A.sc,round=m.round;
+  if(m.phase!=='play')return; // 이미 채점되어 between/done 으로 넘어갔으면 재실행하지 않음
+  if(A.gradingRound===round)return; // 같은 라운드에 대한 중복 호출만 차단
+  A.gradingRound=round;
+  const lines=sc.rounds[round].lines.map(id=>sc.lines.find(l=>l.id===id)),upd={};
   Object.entries(A.players).forEach(([id,p])=>{
     const values=[];Object.entries(p.values||{}).forEach(([k,v])=>values[+k]=v);
     const lr=lines.map(l=>({id:l.id,...scoreLine(l,values)}));
@@ -475,21 +477,21 @@ async function gradeRound(){
     upd[`results/${id}`]={name:p.name,rounds,total:Object.values(rounds).reduce((a,r)=>a+r.score,0)};
   });
   upd['meta/phase']=round<sc.rounds.length-1?'between':'done';
-  try{await roomRef().update(upd);}catch(e){await showErr('채점 실패',e);}
-  finally{A.grading=false;}
+  try{await roomRef().update(upd);}
+  catch(e){A.gradingRound=null;showErr('채점 실패',e);} // 팝업을 기다리지 않는다(기다리면 잠금이 풀리지 않음)
 }
 async function nextRound(){
   const r=A.meta.round+1,upd={'meta/round':r,'meta/phase':'play'};if(A.sc.rounds[r].newBag)upd['private/bag']=makeBag();
   try{await roomRef().update(upd);}catch(e){await showErr('다음 라운드 시작 실패',e);}
 }
-function leave(){off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};A.bag=[];A.seqNext={};A.drawing=false;A.grading=false;show('entry');}
+function leave(){off();A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};A.bag=[];A.seqNext={};A.drawing=false;A.gradingRound=null;show('entry');}
 $('backBtn').onclick=async()=>{if(await modal({title:'나가기',text:'게임은 그대로 유지됩니다. 다시 로그인하면 이어서 진행할 수 있어요.',icon:'M',okText:'나가기'}))leave();};
 $('resetBtn').onclick=async()=>{
   if(!(await modal({title:'게임 초기화',text:'현재 진행 상황(학생 배치, 뽑은 타일, 점수)이 모두 삭제되고 처음부터 다시 시작합니다. 계속할까요?',icon:'!',okText:'초기화'})))return;
   off(); // 삭제 도중 남은 리스너가 옛 데이터로 화면을 다시 그리지 않도록 먼저 끊는다
   try{
     await clearRoom();
-    A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};A.bag=[];A.seqNext={};A.drawing=false;A.grading=false;
+    A.meta=null;A.sc=null;A.draws={};A.players={};A.results={};A.bag=[];A.seqNext={};A.drawing=false;A.gradingRound=null;
     show('select');
   }catch(e){await showErr('초기화 실패',e);} // 실패하면 select로 넘어가지 않고 게임 화면에 그대로 머무른다
 };

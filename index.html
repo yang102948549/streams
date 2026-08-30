@@ -179,6 +179,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
       <button class="hbtn draw" id="drawBtn">타일 뽑기</button>
       <button class="hbtn" id="nextBtn">다음 라운드</button>
       <button class="hbtn" id="rankBtn">순위</button>
+      <button class="hbtn" id="closeRoomBtn" style="background:#c0392b; color:#fff; margin-top:4px;">방 닫기</button>
     </div>
     <div class="chipsbox" id="chipsbox"><label>뽑힌 타일</label><div class="chips" id="chips"></div></div>
     <div class="runsbox hidden" id="runsbox"><label>득점 구간</label><div class="runlist" id="runlist"></div></div>
@@ -378,7 +379,9 @@ $('enterBtn').onclick=async()=>{
 async function enterRoom(){
   off();show('game');$('pname').textContent=A.name;
   $('hostctl').classList.toggle('hidden',!A.host);
-  await roomRef().child('players/'+uid).update({name:A.name,joinedAt:Date.now()});
+  const myPlayerRef = roomRef().child('players/'+uid);
+  await myPlayerRef.update({name:A.name,joinedAt:Date.now()});
+  myPlayerRef.onDisconnect().remove();
   listen(roomRef().child('meta'),'value',s=>{const m=s.val();if(!m){leave('진행자가 게임을 종료했어요.');return;}
     const first=!A.meta||A.meta.scenario!==m.scenario;A.meta=m;if(first){A.key=m.scenario;A.sc=SCENARIOS[A.key];$('side').style.background=A.sc.panel;$('pbadge').textContent=A.key;}render();});
   listen(roomRef().child('draws'),'value',s=>{A.draws=s.val()||{};
@@ -456,6 +459,19 @@ $('nextBtn').onclick=nextRound;
 $('rankBtn').onclick=showRankPopup;
 $('rankClose').onclick=()=>$('rankModal').classList.add('hidden');
 $('rankModal').addEventListener('click',e=>{if(e.target.id==='rankModal')$('rankModal').classList.add('hidden');});
+
+$('closeRoomBtn').onclick=async()=>{
+  if(!A.host)return;
+  const go=await confirmModal('방 닫기','정말 방을 닫을까요? 모든 참가자가 대기실로 이동하고 기록이 삭제됩니다.','방 닫기');
+  if(go){
+    try{
+      await roomRef().update({meta:null,draws:null,results:null,private:null,players:null});
+      leave('방을 닫았습니다.');
+    }catch(e){
+      console.error(e);modal('오류','방을 닫는데 실패했습니다.');
+    }
+  }
+};
 
 function render(){try{renderInner();}catch(e){console.error('render 오류',e);}}
 function renderInner(){
@@ -564,6 +580,11 @@ async function place(i,head){
   catch(e){console.error(e);ST.localPlacedSeqs.delete(head.seq);delete ST.localValues[i];render();}
 }
 function leave(msg){
+  if(uid && A.name && !A.host){
+    const myPlayerRef = roomRef().child('players/'+uid);
+    myPlayerRef.remove();
+    myPlayerRef.onDisconnect().cancel();
+  }
   off();A.meta=null;A.sc=null;A.draws={};A.me=null;A.results={};A.players={};A.bag=[];
   A.host=false;A.drawing=false;A.gradingRound=null;A.seqNext={};
   ST.localValues={};ST.localPlacedSeqs=new Set();ST.choicePick=null;

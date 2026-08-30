@@ -354,11 +354,19 @@ $('enterBtn').onclick=async()=>{
     if(!uid){const cred=await auth.signInAnonymously();uid=cred.user.uid;}
     A.name=name;A.host=hostOn;
     const snap=await roomRef().child('meta').get();
+    const checkDup=async()=>{ // 접속 중인 다른 사람과 이름이 겹치는지 확인(진행자·참가자 공통)
+      const playersSnap=await roomRef().child('players').get();
+      const players=playersSnap.val()||{};
+      return Object.entries(players).some(([pid,p])=>pid!==uid&&p&&p.online!==false&&p.name&&p.name.trim().toLowerCase()===name.toLowerCase());
+    };
 
     if(hostOn){ // 진행자: 새 방 개설 또는 기존 방 이어서 진행
       if(snap.exists()&&snap.val().phase!=='done'){
         const resume=await confirmModal('진행 중인 게임이 있어요','이어서 진행할까요? "새로 시작"을 고르면 기존 기록이 모두 지워집니다.','이어서 진행');
-        if(resume){await enterRoom();$('enterBtn').disabled=false;return;} // 기존 방 그대로 유지, 데이터 삭제 없이 재입장
+        if(resume){
+          if(await checkDup()){$('entryErr').textContent='이미 사용 중인 이름이에요. 다른 이름을 입력해 주세요.';$('enterBtn').disabled=false;return;}
+          await enterRoom();$('enterBtn').disabled=false;return; // 기존 방 그대로 유지, 데이터 삭제 없이 재입장
+        }
         const go=await confirmModal('새로 시작','정말 새로 시작할까요? 기존 기록이 모두 지워집니다.','새로 시작');
         if(!go){$('enterBtn').disabled=false;return;}
       }
@@ -368,11 +376,7 @@ $('enterBtn').onclick=async()=>{
       await roomRef().child('private').set({bag:makeBag()});
     }else{ // 참가자: 열린 방에 입장
       if(!snap.exists()){$('entryErr').textContent='아직 방이 열리지 않았어요. 잠시 후 다시 시도해 주세요.';$('enterBtn').disabled=false;return;}
-      const playersSnap=await roomRef().child('players').get();
-      const players=playersSnap.val()||{};
-      // 접속 중인 사람과만 이름 충돌을 검사한다(나간 사람의 이름은 다시 쓸 수 있게)
-      const dup=Object.entries(players).some(([pid,p])=>pid!==uid&&p&&p.online!==false&&p.name&&p.name.trim().toLowerCase()===name.toLowerCase());
-      if(dup){$('entryErr').textContent='이미 사용 중인 이름이에요. 다른 이름을 입력해 주세요.';$('enterBtn').disabled=false;return;}
+      if(await checkDup()){$('entryErr').textContent='이미 사용 중인 이름이에요. 다른 이름을 입력해 주세요.';$('enterBtn').disabled=false;return;}
     }
     await enterRoom();
   }catch(e){console.error(e);$('entryErr').textContent='연결 실패: '+(e.message||e);}
@@ -540,15 +544,17 @@ function renderInner(){
 
   if(A.host)renderHost(m,sc,round);
 }
-/* 진행자 컨트롤: 전원이 현재 타일을 배치해야 다음 타일을 뽑을 수 있다 */
+/* 진행자 컨트롤: 접속 중인 전원이 현재 타일을 배치해야 다음 타일을 뽑을 수 있다
+   (연결이 끊긴 참가자는 대기 대상에서 제외 — 그렇지 않으면 그 학생이 이탈한 순간
+   게임 전체가 영원히 멈춘다. 나중에 다시 들어오면 밀린 타일을 순서대로 따라잡는다) */
 function renderHost(m,sc,round){
-  const players=Object.entries(A.players);
+  const players=Object.entries(A.players).filter(([,p])=>p.online!==false);
   const need=drawsArr(round).filter(placeable).length,toFill=cellsToFill(),allDrawn=need>=toFill;
   let done=0;const total=players.length;
   if(m.phase==='setup')done=players.filter(([,p])=>p.ready).length;
   else players.forEach(([,p])=>{const pr=playerProgress(p,round);if(pr.done===pr.need)done++;});
-  // 아직 뽑은 타일이 없으면 대기할 필요가 없다(첫 타일 교착 방지)
-  const everyonePlaced=need===0||(total>0&&done===total);
+  // 아직 뽑은 타일이 없거나, 접속 중인 사람이 아무도 없으면 대기할 필요가 없다
+  const everyonePlaced=need===0||total===0||done===total;
 
   $('drawBtn').disabled=A.drawing||(m.phase!=='play'&&m.phase!=='setup')||allDrawn||!A.bag.length||!everyonePlaced;
   if(m.phase==='setup')$('drawBtn').textContent=everyonePlaced?'게임 시작':`별 배치 대기 (${total-done}명)`;

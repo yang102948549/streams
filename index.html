@@ -179,7 +179,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
       <button class="hbtn draw" id="drawBtn">타일 뽑기</button>
       <button class="hbtn" id="nextBtn">다음 라운드</button>
       <button class="hbtn" id="rankBtn">순위</button>
-      <button class="hbtn" id="closeRoomBtn" style="background:#c0392b; color:#fff; margin-top:4px;">방 닫기</button>
+      <button class="hbtn" id="closeRoomBtn" style="background:#c0392b;color:#fff;margin-top:4px">방 닫기</button>
     </div>
     <div class="chipsbox" id="chipsbox"><label>뽑힌 타일</label><div class="chips" id="chips"></div></div>
     <div class="runsbox hidden" id="runsbox"><label>득점 구간</label><div class="runlist" id="runlist"></div></div>
@@ -355,9 +355,11 @@ $('enterBtn').onclick=async()=>{
     A.name=name;A.host=hostOn;
     const snap=await roomRef().child('meta').get();
 
-    if(hostOn){ // 진행자: 새 방 개설
+    if(hostOn){ // 진행자: 새 방 개설 또는 기존 방 이어서 진행
       if(snap.exists()&&snap.val().phase!=='done'){
-        const go=await confirmModal('진행 중인 게임이 있어요','새로 시작하면 기존 기록이 모두 지워집니다.','새로 시작');
+        const resume=await confirmModal('진행 중인 게임이 있어요','이어서 진행할까요? "새로 시작"을 고르면 기존 기록이 모두 지워집니다.','이어서 진행');
+        if(resume){await enterRoom();$('enterBtn').disabled=false;return;} // 기존 방 그대로 유지, 데이터 삭제 없이 재입장
+        const go=await confirmModal('새로 시작','정말 새로 시작할까요? 기존 기록이 모두 지워집니다.','새로 시작');
         if(!go){$('enterBtn').disabled=false;return;}
       }
       await roomRef().update({meta:null,draws:null,results:null,private:null,players:null});
@@ -368,7 +370,8 @@ $('enterBtn').onclick=async()=>{
       if(!snap.exists()){$('entryErr').textContent='아직 방이 열리지 않았어요. 잠시 후 다시 시도해 주세요.';$('enterBtn').disabled=false;return;}
       const playersSnap=await roomRef().child('players').get();
       const players=playersSnap.val()||{};
-      const dup=Object.entries(players).some(([pid,p])=>pid!==uid&&p&&p.name&&p.name.trim().toLowerCase()===name.toLowerCase());
+      // 접속 중인 사람과만 이름 충돌을 검사한다(나간 사람의 이름은 다시 쓸 수 있게)
+      const dup=Object.entries(players).some(([pid,p])=>pid!==uid&&p&&p.online!==false&&p.name&&p.name.trim().toLowerCase()===name.toLowerCase());
       if(dup){$('entryErr').textContent='이미 사용 중인 이름이에요. 다른 이름을 입력해 주세요.';$('enterBtn').disabled=false;return;}
     }
     await enterRoom();
@@ -379,9 +382,12 @@ $('enterBtn').onclick=async()=>{
 async function enterRoom(){
   off();show('game');$('pname').textContent=A.name;
   $('hostctl').classList.toggle('hidden',!A.host);
-  const myPlayerRef = roomRef().child('players/'+uid);
-  await myPlayerRef.update({name:A.name,joinedAt:Date.now()});
-  myPlayerRef.onDisconnect().remove();
+  // 접속 표시만 남기고, 데이터는 지우지 않는다.
+  // (onDisconnect().remove()를 쓰면 새로고침·터널 진입 등 순간적인 끊김에도
+  //  그동안 배치한 숫자가 통째로 사라지므로 사용하지 않는다)
+  const myPlayerRef=roomRef().child('players/'+uid);
+  await myPlayerRef.update({name:A.name,joinedAt:Date.now(),online:true});
+  myPlayerRef.child('online').onDisconnect().set(false);
   listen(roomRef().child('meta'),'value',s=>{const m=s.val();if(!m){leave('진행자가 게임을 종료했어요.');return;}
     const first=!A.meta||A.meta.scenario!==m.scenario;A.meta=m;if(first){A.key=m.scenario;A.sc=SCENARIOS[A.key];$('side').style.background=A.sc.panel;$('pbadge').textContent=A.key;}render();});
   listen(roomRef().child('draws'),'value',s=>{A.draws=s.val()||{};
@@ -420,6 +426,7 @@ async function hostDraw(){
   const round=A.meta.round,seq=Math.max(drawsArr(round).length,(A.seqNext[round]||0));
   A.seqNext[round]=seq+1;
   const upd={};upd[`draws/${round}/${seq}`]={...d,ts:Date.now()};upd['private/bag']=bag;
+  if(A.meta.phase==='setup')upd['meta/phase']='play'; // 별 배치가 끝난 뒤 첫 타일을 뽑으면 본게임 시작
   try{await roomRef().update(upd);}
   catch(e){A.seqNext[round]=seq;console.error(e);modal('타일 전송 실패',e.message||String(e));}
   finally{A.drawing=false;render();}
@@ -459,18 +466,12 @@ $('nextBtn').onclick=nextRound;
 $('rankBtn').onclick=showRankPopup;
 $('rankClose').onclick=()=>$('rankModal').classList.add('hidden');
 $('rankModal').addEventListener('click',e=>{if(e.target.id==='rankModal')$('rankModal').classList.add('hidden');});
-
 $('closeRoomBtn').onclick=async()=>{
   if(!A.host)return;
   const go=await confirmModal('방 닫기','정말 방을 닫을까요? 모든 참가자가 대기실로 이동하고 기록이 삭제됩니다.','방 닫기');
-  if(go){
-    try{
-      await roomRef().update({meta:null,draws:null,results:null,private:null,players:null});
-      leave('방을 닫았습니다.');
-    }catch(e){
-      console.error(e);modal('오류','방을 닫는데 실패했습니다.');
-    }
-  }
+  if(!go)return;
+  try{await roomRef().update({meta:null,draws:null,results:null,private:null,players:null});leave('방을 닫았습니다.');}
+  catch(e){console.error(e);modal('오류','방을 닫는데 실패했습니다.');}
 };
 
 function render(){try{renderInner();}catch(e){console.error('render 오류',e);}}
@@ -549,10 +550,12 @@ function renderHost(m,sc,round){
   // 아직 뽑은 타일이 없으면 대기할 필요가 없다(첫 타일 교착 방지)
   const everyonePlaced=need===0||(total>0&&done===total);
 
-  $('drawBtn').disabled=A.drawing||m.phase!=='play'||allDrawn||!A.bag.length||!everyonePlaced;
-  $('drawBtn').textContent=m.phase!=='play'?'타일 뽑기':(allDrawn?'모두 뽑음':(everyonePlaced?'타일 뽑기':`대기 ${total-done}명`));
+  $('drawBtn').disabled=A.drawing||(m.phase!=='play'&&m.phase!=='setup')||allDrawn||!A.bag.length||!everyonePlaced;
+  if(m.phase==='setup')$('drawBtn').textContent=everyonePlaced?'게임 시작':`별 배치 대기 (${total-done}명)`;
+  else $('drawBtn').textContent=m.phase!=='play'?'타일 뽑기':(allDrawn?'모두 뽑음':(everyonePlaced?'타일 뽑기':`대기 ${total-done}명`));
   $('nextBtn').disabled=m.phase!=='between';
   $('nextBtn').textContent=m.phase==='between'?`${sc.rounds[round+1].label} 시작`:'다음 라운드';
+  $('closeRoomBtn').textContent=m.phase==='done'?'방 닫기':'방 닫기(중단)';
 
   // 자동 채점: 다 뽑았고 전원 배치 완료
   if(m.phase==='play'&&allDrawn&&everyonePlaced){
@@ -579,16 +582,23 @@ async function place(i,head){
   try{await roomRef().child('players/'+uid).update(upd);}
   catch(e){console.error(e);ST.localPlacedSeqs.delete(head.seq);delete ST.localValues[i];render();}
 }
+let leaving=false;
 function leave(msg){
-  if(uid && A.name && !A.host){
-    const myPlayerRef = roomRef().child('players/'+uid);
-    myPlayerRef.remove();
-    myPlayerRef.onDisconnect().cancel();
-  }
-  off();A.meta=null;A.sc=null;A.draws={};A.me=null;A.results={};A.players={};A.bag=[];
+  if(leaving)return; // 리스너가 연쇄로 leave를 다시 부르는 것을 막는다
+  leaving=true;
+  const wasHost=A.host,phase=A.meta&&A.meta.phase;
+  off(); // 먼저 리스너를 끊고 나서 정리한다(정리 중 발생한 변경이 다시 leave를 부르지 않도록)
+  if(db&&uid&&phase){ // 진행자도 학생과 동일한 규칙으로 정리한다(방 자체는 건드리지 않음 — 방을 완전히 닫으려면 '방 닫기' 버튼 사용)
+    const myPlayerRef=roomRef().child('players/'+uid);
+    myPlayerRef.child('online').onDisconnect().cancel();
+    // 게임이 끝난 뒤 나가면 자리를 완전히 비워 이름을 재사용할 수 있게 하고,
+    // 진행 중에 나가면 배치 기록은 남긴 채 접속 표시만 내린다(다시 들어오면 이어서 진행).
+    if(phase==='done')myPlayerRef.remove().catch(e=>console.error(e));
+    else myPlayerRef.child('online').set(false).catch(e=>console.error(e));
+  }A.meta=null;A.sc=null;A.draws={};A.me=null;A.results={};A.players={};A.bag=[];
   A.host=false;A.drawing=false;A.gradingRound=null;A.seqNext={};
   ST.localValues={};ST.localPlacedSeqs=new Set();ST.choicePick=null;
-  $('hostctl').classList.add('hidden');show('entry');if(msg)modal('알림',msg);
+  $('hostctl').classList.add('hidden');show('entry');leaving=false;if(msg)modal('알림',msg);
 }
 $('backBtn').onclick=()=>leave();
 </script>

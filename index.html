@@ -31,6 +31,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 .field{background:var(--cream);border-radius:12px;padding:8px 12px}
 .field label{font-size:11px;font-weight:700;color:var(--muted);display:block}
 .field input{width:100%;border:0;background:transparent;font:700 19px 'Pretendard';color:var(--ink);user-select:text;-webkit-user-select:text}
+.field input.codeInput{font:800 26px var(--num);letter-spacing:8px;text-align:center}
 .btn{width:100%;padding:12px;border-radius:12px;font-weight:800;font-size:17px;background:var(--ink);color:#fff}
 .btn:disabled{opacity:.35}
 .btn.sub{background:transparent;color:var(--ink);border:2px solid #d8d0c4}
@@ -74,6 +75,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
 .mapwrap{position:relative;min-width:0;min-height:0;padding-left:env(safe-area-inset-left)}
 .mapwrap svg{width:100%;height:100%;display:block}
 .status{position:absolute;top:8px;left:calc(10px + env(safe-area-inset-left));background:rgba(255,255,255,.92);backdrop-filter:blur(6px);padding:5px 11px;border-radius:999px;font-weight:700;font-size:12px;box-shadow:0 3px 10px rgba(0,0,0,.08);display:flex;align-items:center;gap:7px;max-width:70%}
+#codeShow{position:absolute;top:8px;right:calc(10px + env(safe-area-inset-left));background:var(--ink);color:#fff;padding:5px 12px;border-radius:999px;font:800 15px var(--num);letter-spacing:3px;box-shadow:0 3px 10px rgba(0,0,0,.15)}
 .status .dot{width:8px;height:8px;border-radius:50%;background:var(--blue);flex-shrink:0}
 .side{color:#fff;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:8px 8px 8px 10px;padding-right:max(8px,env(safe-area-inset-right));position:relative;overflow:hidden}
 .side::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:repeating-linear-gradient(180deg,rgba(0,0,0,.18) 0 10px,transparent 10px 20px)}
@@ -141,6 +143,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
     <div class="perf"></div>
     <div class="main">
       <div class="field"><label>이름</label><input id="inName" placeholder="이름" maxlength="12" autocomplete="off"></div>
+      <div class="field" id="codeField"><label>방 코드</label><input id="inCode" class="codeInput" placeholder="0000" maxlength="4" inputmode="numeric" autocomplete="off"></div>
       <div class="hostrow">
         <div class="hosttxt">진행자로 참여<small>타일을 뽑으면서 같이 게임해요</small></div>
         <button class="sw" id="hostSw" aria-label="진행자 모드"></button>
@@ -174,6 +177,7 @@ button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit
   <div class="mapwrap">
     <svg id="map" viewBox="0 0 1200 620" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="status"><span class="dot" id="sdot"></span><span id="stext">-</span></div>
+    <div class="hidden" id="codeShow"></div>
   </div>
   <aside class="side" id="side">
     <div class="top"><span class="badge" id="pbadge">A</span><span class="nm" id="pname"></span><button class="leave" id="backBtn">나가기</button></div>
@@ -312,7 +316,7 @@ function renderMap(svg,sc,state){
 }
 
 let db,auth,uid=null;
-const A={name:'',sc:null,key:null,meta:null,draws:{},me:null,results:{},players:{},subs:[],
+const A={name:'',code:'',sc:null,key:null,meta:null,draws:{},me:null,results:{},players:{},subs:[],
          host:false,bag:[],drawing:false,gradingRound:null,seqNext:{}};
 const ST={choicePick:null,localValues:{},localPlacedSeqs:new Set()};
 function off(){A.subs.forEach(fn=>fn());A.subs=[];}
@@ -323,7 +327,7 @@ function listen(ref,ev,cb){
   });
   A.subs.push(()=>ref.off(ev,cb));
 }
-const roomRef=()=>db.ref('room');
+const roomRef=()=>db.ref('rooms/'+A.code);
 const show=id=>{['entry','game'].forEach(s=>$(s).classList.toggle('hidden',s!==id));$('rotate').classList.toggle('on',id==='game');};
 
 function goFullscreen(){
@@ -350,22 +354,28 @@ let hostOn=false,pickKey='A';
   $('picks').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     pickKey=b.dataset.k;$('picks').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));});
 })();
+$('inCode').addEventListener('input',e=>e.target.value=e.target.value.replace(/\D/g,'').slice(0,4));
+function genCode(){return String(Math.floor(1000+Math.random()*9000));}
 $('hostSw').onclick=()=>{
   hostOn=!hostOn;
   $('hostSw').classList.toggle('on',hostOn);
   $('mapPick').classList.toggle('hidden',!hostOn);
   $('enterBtn').textContent=hostOn?'방 만들고 시작':'참여하기';
+  const lbl=$('codeField').querySelector('label');
+  if(hostOn){lbl.textContent='방 코드 (참가자에게 알려주세요)';if(!$('inCode').value)$('inCode').value=genCode();}
+  else lbl.textContent='방 코드';
 };
 
 $('enterBtn').onclick=async()=>{
   goFullscreen();
-  const name=$('inName').value.trim();$('entryErr').textContent='';
+  const name=$('inName').value.trim(),code=$('inCode').value.trim();$('entryErr').textContent='';
   if(!name)return $('entryErr').textContent='이름을 입력하세요.';
+  if(!/^\d{4}$/.test(code))return $('entryErr').textContent='방 코드는 숫자 4자리입니다.';
   $('enterBtn').disabled=true;
   try{
     if(!db){firebase.initializeApp(firebaseConfig);db=firebase.database();auth=firebase.auth();}
     if(!uid){const cred=await auth.signInAnonymously();uid=cred.user.uid;}
-    A.name=name;A.host=hostOn;
+    A.name=name;A.host=hostOn;A.code=code;
     const snap=await roomRef().child('meta').get();
     const checkDup=async()=>{ // 접속 중인 다른 사람과 이름이 겹치는지 확인(진행자·참가자 공통)
       const playersSnap=await roomRef().child('players').get();
@@ -375,7 +385,7 @@ $('enterBtn').onclick=async()=>{
 
     if(hostOn){ // 진행자: 새 방 개설 또는 기존 방 이어서 진행
       if(snap.exists()&&snap.val().phase!=='done'){
-        const resume=await confirmModal('진행 중인 게임이 있어요','이어서 진행할까요? "새로 시작"을 고르면 기존 기록이 모두 지워집니다.','이어서 진행');
+        const resume=await confirmModal('이 코드로 진행 중인 게임이 있어요',`코드 ${code} 방이 이미 열려 있습니다. 이어서 진행할까요? "새로 시작"을 고르면 기존 기록이 모두 지워집니다.`,'이어서 진행');
         if(resume){
           if(await checkDup()){$('entryErr').textContent='이미 사용 중인 이름이에요. 다른 이름을 입력해 주세요.';$('enterBtn').disabled=false;return;}
           await enterRoom();$('enterBtn').disabled=false;return; // 기존 방 그대로 유지, 데이터 삭제 없이 재입장
@@ -388,7 +398,7 @@ $('enterBtn').onclick=async()=>{
       await roomRef().child('meta').set({scenario:pickKey,phase:sc.setupStars?'setup':'play',round:0,hostUid:uid,createdAt:Date.now()});
       await roomRef().child('private').set({bag:makeBag()});
     }else{ // 참가자: 열린 방에 입장
-      if(!snap.exists()){$('entryErr').textContent='아직 방이 열리지 않았어요. 잠시 후 다시 시도해 주세요.';$('enterBtn').disabled=false;return;}
+      if(!snap.exists()){$('entryErr').textContent='그 코드로 열려 있는 방이 없어요. 코드를 다시 확인해 주세요.';$('enterBtn').disabled=false;return;}
       if(await checkDup()){$('entryErr').textContent='이미 사용 중인 이름이에요. 다른 이름을 입력해 주세요.';$('enterBtn').disabled=false;return;}
     }
     await enterRoom();
@@ -399,6 +409,8 @@ $('enterBtn').onclick=async()=>{
 async function enterRoom(){
   off();show('game');$('pname').textContent=A.name;
   $('hostctl').classList.toggle('hidden',!A.host);
+  $('codeShow').classList.toggle('hidden',!A.host);
+  if(A.host)$('codeShow').textContent=A.code;
   // 접속 표시만 남기고, 데이터는 지우지 않는다.
   // (onDisconnect().remove()를 쓰면 새로고침·터널 진입 등 순간적인 끊김에도
   //  그동안 배치한 숫자가 통째로 사라지므로 사용하지 않는다)
@@ -629,9 +641,9 @@ function leave(msg){
     if(phase==='done')myPlayerRef.remove().catch(e=>console.error(e));
     else myPlayerRef.child('online').set(false).catch(e=>console.error(e));
   }A.meta=null;A.sc=null;A.draws={};A.me=null;A.results={};A.players={};A.bag=[];
-  A.host=false;A.drawing=false;A.gradingRound=null;A.seqNext={};
+  A.host=false;A.drawing=false;A.gradingRound=null;A.seqNext={};A.code='';
   ST.localValues={};ST.localPlacedSeqs=new Set();ST.choicePick=null;
-  $('hostctl').classList.add('hidden');show('entry');leaving=false;if(msg)modal('알림',msg);
+  $('hostctl').classList.add('hidden');$('codeShow').classList.add('hidden');show('entry');leaving=false;if(msg)modal('알림',msg);
 }
 $('backBtn').onclick=()=>leave();
 </script>

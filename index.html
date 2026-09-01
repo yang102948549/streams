@@ -453,15 +453,26 @@ async function gradeRound(){
   if(!A.host||m.phase!=='play')return;
   if(A.gradingRound===round)return;
   A.gradingRound=round;
-  const lines=sc.rounds[round].lines.map(id=>sc.lines.find(l=>l.id===id)),upd={};
-  Object.entries(A.players).forEach(([id,p])=>{
-    const values=[];Object.entries(p.values||{}).forEach(([k,v])=>values[+k]=v);
-    const lr=lines.map(l=>({id:l.id,...scoreLine(l,values)}));
-    const rounds={...((A.results[id]||{}).rounds||{})};rounds[round]={lines:lr,score:lr.reduce((a,x)=>a+x.score,0)};
-    upd[`results/${id}`]={name:p.name,rounds,total:Object.values(rounds).reduce((a,r)=>a+r.score,0)};
-  });
-  upd['meta/phase']=round<sc.rounds.length-1?'between':'done';
-  try{await roomRef().update(upd);}catch(e){A.gradingRound=null;console.error(e);}
+  try{
+    const lines=sc.rounds[round].lines.map(id=>sc.lines.find(l=>l.id===id)),upd={};
+    Object.entries(A.players).forEach(([id,p])=>{
+      try{
+        if(!p)return; // 손상된/빈 항목은 건너뛴다 (한 명 때문에 전체 채점이 막히지 않도록)
+        const values=[];Object.entries(p.values||{}).forEach(([k,v])=>values[+k]=v);
+        const lr=lines.map(l=>({id:l.id,...scoreLine(l,values)}));
+        const rounds={...((A.results[id]||{}).rounds||{})};rounds[round]={lines:lr,score:lr.reduce((a,x)=>a+x.score,0)};
+        upd[`results/${id}`]={name:p.name,rounds,total:Object.values(rounds).reduce((a,r)=>a+r.score,0)};
+      }catch(e){console.error('채점 오류(플레이어 '+id+'):',e);}
+    });
+    upd['meta/phase']=round<sc.rounds.length-1?'between':'done';
+    await roomRef().update(upd);
+  }catch(e){
+    console.error('채점 실패:',e);
+    modal('채점 실패','자동 채점 중 오류가 발생했습니다. 다시 시도합니다.\n('+(e.message||e)+')');
+    setTimeout(()=>{if(A.host)render();},3000); // 이후 아무 이벤트가 없어도 스스로 재시도해본다
+  }finally{
+    A.gradingRound=null; // 성공하든 실패하든 잠금을 풀어서, 다음 render()에서 항상 재시도될 수 있게 한다
+  }
 }
 async function nextRound(){
   if(!A.host||!A.meta||A.meta.phase!=='between')return;
@@ -563,15 +574,18 @@ function renderInner(){
 function renderHost(m,sc,round){
   const players=Object.entries(A.players).filter(([,p])=>p.online!==false);
   const need=drawsArr(round).filter(placeable).length,toFill=cellsToFill(),allDrawn=need>=toFill;
-  let done=0;const total=players.length;
-  if(m.phase==='setup')done=players.filter(([,p])=>p.ready).length;
-  else players.forEach(([,p])=>{const pr=playerProgress(p,round);if(pr.done===pr.need)done++;});
+  let waiting=[];
+  if(m.phase==='setup')waiting=players.filter(([,p])=>!p.ready).map(([,p])=>p.name||'?');
+  else waiting=players.filter(([,p])=>{const pr=playerProgress(p,round);return pr.done!==pr.need;}).map(([,p])=>p.name||'?');
+  const total=players.length,done=total-waiting.length;
   // 아직 뽑은 타일이 없거나, 접속 중인 사람이 아무도 없으면 대기할 필요가 없다
-  const everyonePlaced=need===0||total===0||done===total;
+  const everyonePlaced=need===0||total===0||waiting.length===0;
 
   $('drawBtn').disabled=A.drawing||(m.phase!=='play'&&m.phase!=='setup')||allDrawn||!A.bag.length||!everyonePlaced;
-  if(m.phase==='setup')$('drawBtn').textContent=everyonePlaced?'게임 시작':`별 배치 대기 (${total-done}명)`;
-  else $('drawBtn').textContent=m.phase!=='play'?'타일 뽑기':(allDrawn?'모두 뽑음':(everyonePlaced?'타일 뽑기':`대기 ${total-done}명`));
+  const waitTxt=waiting.length?`대기: ${waiting.slice(0,3).join(', ')}${waiting.length>3?` 외 ${waiting.length-3}명`:''}`:'';
+  if(m.phase==='setup')$('drawBtn').textContent=everyonePlaced?'게임 시작':'별 배치 대기';
+  else $('drawBtn').textContent=m.phase!=='play'?'타일 뽑기':(allDrawn?'모두 뽑음':(everyonePlaced?'타일 뽑기':'대기 중'));
+  $('hint').textContent=(m.phase==='play'||m.phase==='setup')&&waiting.length?waitTxt:$('hint').textContent;
   $('nextBtn').disabled=m.phase!=='between';
   $('nextBtn').textContent=m.phase==='between'?`${sc.rounds[round+1].label} 시작`:'다음 라운드';
   $('closeRoomBtn').textContent=m.phase==='done'?'방 닫기':'방 닫기(중단)';
